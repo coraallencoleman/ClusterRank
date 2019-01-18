@@ -16,3 +16,5 @@ Imports:
     Hmisc,
     reshape2,
     RColorBrewer
+Suggests: testthat,
+        roxygen2

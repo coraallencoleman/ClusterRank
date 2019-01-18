@@ -58,7 +58,6 @@ rank_cluster.bin <- function(y,n,k=NULL,scale=identity,weighted=TRUE,n.iter=1000
                theta=scale(npmle_res$theta),n.samp=n.samp)
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort)
-#TODO what does .Machine do? What pkg?
   if (weighted)
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var))
   else wgt <- rep(1,N)
