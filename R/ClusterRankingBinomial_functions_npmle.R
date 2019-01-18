@@ -1,55 +1,53 @@
 #functions for grouped ranking
 #use this instead? devtools::use_package("dplyr") # Defaults to imports
 library(ggplot2)
-#library(coda) #what does coda do? (which command)
 library(reshape2)
 library(clue)
 library(Hmisc)
 library(RColorBrewer)
 #TODO binomial data should be something else. use LBW for poisson
+
 npmle.bin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   #k is number of initial clusters
-#  theta <- quantile(y/n,probs=(0:(k-1))/(k-1))
   if (is.null(k)) {
     theta<-sort(y/n) #sorted probabilities
     k<-length(theta) #k = number of units to rank
   } else {
-    theta <- seq(min(y/n),max(y/n),length=k) #mass points of F We're estimating these
+    theta <- seq(min(y/n),max(y/n),length=k) #starting mass points of F. We're estimating these, along with p_theta
   }
-  p_theta <- rep(1/k,k) #probabilities of each mass point. We're estimating these
+  p_theta <- rep(1/k,k) #probabilities of each mass point.
 
-  E_z <- matrix(NA,length(y),k) #expeted value of the probability that youre in each of hte groups
-  #calculating the p that zij is equal to theta star j
+  E_z <- matrix(NA,length(y),k) #expeted value of the probability that you're in each of the k theta groups
+  #calculating the p that z_{ij} is equal to theta star j
   for (j in 1:n.iter) {
     for (i in 1:k) {
       #numerator
-      E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE) #TODO E_z is log(pr associated with group) + log(quantile)?
+      E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
     }
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
-    p_theta <- apply(E_z,2,mean) #M step: means over the
-    theta <- y%*%E_z/n%*%E_z #theta for each group
+    p_theta <- apply(E_z,2,mean) #M-step: means over the matrix
+    theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each group
   }
   #this reduces down to needed number of groups k
   ord<-order(theta)
   theta<-c(theta[ord]) #sorts
   p_theta<-p_theta[ord] #sorts
 
-  p_theta <- tapply(p_theta,cumsum(!duplicated(round(theta,8))),sum)
-  #cumsum numbers groups is ascending order. sums the pthetas that goes with each group. See pictures
-  theta <- theta[!duplicated(round(theta,8))]
+  p_theta <- tapply(p_theta,cumsum(!duplicated(round(theta,8))),sum) #cumsum numbers groups is ascending order. sums the pthetas that goes with each group. See pictures
+  theta <- theta[!duplicated(round(theta,8))] #removes duplicate thetas
 
   E_z <- matrix(NA,length(y),length(theta))
   #final posterior probabilties for each county. Pr(county in group i)
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
   }
-  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities. subtract max to avoid underflow
+  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities. subtracts max to avoid underflow
 
   rownames(E_z)<-row_names
   colnames(E_z)<-signif(theta,3) #group names are rounded
 
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
-  #(priors, posterior)
+  #return(prior for theta, prior for p_theta, posterior)
 }
 
 rank_cluster.bin <- function(y,n,k=NULL,scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {

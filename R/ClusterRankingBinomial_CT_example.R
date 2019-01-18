@@ -1,8 +1,7 @@
 # Rank and Cluster Binomial Data CT Example
 #setwd("/Users/cora/git_repos/ClusteredRanking/")
-#binData <- read.csv("data/lbw_ct.csv")
+#binData <- read.csv("data/alcohol_ct.csv")
 #devtools::use_data(binData, overwrite = TRUE)
-#library(coda)
 require(dplyr)
 require(reshape2)
 require(clue)

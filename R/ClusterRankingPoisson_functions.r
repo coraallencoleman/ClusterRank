@@ -2,14 +2,13 @@
  #note: replaced theta with lambda
 
 library(tidyverse)
-#library(coda)
 library(reshape2)
 library(clue)
 library(Hmisc)
 library(RColorBrewer)
 
 npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
-  #y, persontime T
+  #y, persontime ti
   if (is.null(k)) {
     lambda<-sort(y/ti) #sorted probabilities.
     k<-length(lambda) #number of groups to start
@@ -21,34 +20,27 @@ npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) 
   E_z <- matrix(NA,length(y),k)
   for (j in 1:n.iter) {
     for (i in 1:k) {
-      #The R function dpois(x, lambda) calculates the probability that there are x events in an interval,
-      #where the argument "lambda" is the average number of events per interval.
-      #TODO check this In dpois(y/n, lambda[i], log = TRUE) : non-integer x = 0.076169
-
-      #this is the mixture distribution, right?
-      E_z[,i] <- log(p_lambda[i])+dpois(y, ti*lambda[i],log=TRUE)
+      E_z[,i] <- log(p_lambda[i])+dpois(y, ti*lambda[i],log=TRUE) #E-step
     }
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #E_z will be
-    p_lambda <- apply(E_z,2,mean)
-    lambda <- y%*%E_z/ti%*%E_z #TODO does this reassign lambda? Do we want this?
+    p_lambda <- apply(E_z,2,mean) #M-step
+    lambda <- y%*%E_z/ti%*%E_z
   }
 
   ord<-order(lambda)
-  lambda<-c(lambda[ord]) #NaN
+  lambda<-c(lambda[ord])
   p_lambda<-p_lambda[ord]
 
-  #this is NaN
   p_lambda <- tapply(p_lambda,cumsum(!duplicated(round(lambda,8))),sum)
   lambda <- lambda[!duplicated(round(lambda,8))]
 
-  #TODO problem here NaN
   E_z <- matrix(NA,length(y),length(lambda))
   for (i in 1:length(lambda)) {
     E_z[,i] <- log(p_lambda[i])+dpois(y,ti*lambda[i],log=TRUE)
   }
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
 
-  rownames(E_z)<-row_names #this seems to be flipped. Should flip matrix E_z?
+  rownames(E_z)<-row_names
   colnames(E_z)<-signif(lambda,3)
 
   return(list(lambda=lambda, p_lambda=p_lambda, post_lambda=E_z))
@@ -85,7 +77,7 @@ rank_cluster.pois <- function(y,n,k=NULL,scale=identity,weighted=TRUE,n.iter=100
   ord <- order(rnk)
 
   #break this into a new function
-  CI <- poisconf(y,n) #this depends on data type.
+  CI <- poisconf(y,n) #this depends on data type. TODO find new for pois
 
   ranked_table <- data_frame(name=row_names,rank=rnk,group=factor(grp),
                              y=y,n=n,p=y/n,
@@ -100,28 +92,29 @@ rank_cluster.pois <- function(y,n,k=NULL,scale=identity,weighted=TRUE,n.iter=100
   return(list(ranked_table=ranked_table,posterior=posterior,lambda=npmle_res$lambda,pr_lambda=npmle_res$p_lambda))
 }
 
-getmode <- function(v) { #same
-  uniqv <- unique(v)
-  uniqv[which.max(tabulate(match(v, uniqv)))]
-}
-
-plot_rt <- function(rc,xlab="Proportion") { #same for each data type
-  post_df <- melt(rc$posterior)
-  post_df$group <- rc$ranked_table$group[match(post_df$Var1,rc$ranked_table$name)]
-  post_df$p_grp <- rc$ranked_table$p_grp[match(post_df$Var1,rc$ranked_table$name)]
-
-  return(ggplot(rc$ranked_table,aes(y=name,x=p,color=group,alpha=p_grp))+
-           geom_point(pch=3)+
-           geom_point(aes(x=pm),pch=4)+
-           geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=group,size=value,alpha=value))+
-           geom_errorbarh(aes(xmin=p_LCL,xmax=p_UCL),height=0)+
-           scale_y_discrete("",limits=rev(levels(rc$ranked_table$name)))+
-           scale_x_continuous(xlab,breaks=rc$lambda[!duplicated(round(rc$lambda,2))],
-                              labels=round(rc$lambda[!duplicated(round(rc$lambda,2))],3),minor_breaks=rc$lambda)+
-           scale_color_manual(values=rep(brewer.pal(8,"Dark2"),1+floor(length(levels(rc$ranked_table$group))/8)))+
-           scale_size_area(max_size=5)+
-           scale_alpha(limits=c(0,1),range=c(0,1))+
-           theme_bw()+
-           guides(color=FALSE,size=FALSE,alpha=FALSE))
-}
+#same for binomial
+# getmode <- function(v) { #same
+#   uniqv <- unique(v)
+#   uniqv[which.max(tabulate(match(v, uniqv)))]
+# }
+#
+# plot_rt <- function(rc,xlab="Proportion") { #same for each data type
+#   post_df <- melt(rc$posterior)
+#   post_df$group <- rc$ranked_table$group[match(post_df$Var1,rc$ranked_table$name)]
+#   post_df$p_grp <- rc$ranked_table$p_grp[match(post_df$Var1,rc$ranked_table$name)]
+#
+#   return(ggplot(rc$ranked_table,aes(y=name,x=p,color=group,alpha=p_grp))+
+#            geom_point(pch=3)+
+#            geom_point(aes(x=pm),pch=4)+
+#            geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=group,size=value,alpha=value))+
+#            geom_errorbarh(aes(xmin=p_LCL,xmax=p_UCL),height=0)+
+#            scale_y_discrete("",limits=rev(levels(rc$ranked_table$name)))+
+#            scale_x_continuous(xlab,breaks=rc$lambda[!duplicated(round(rc$lambda,2))],
+#                               labels=round(rc$lambda[!duplicated(round(rc$lambda,2))],3),minor_breaks=rc$lambda)+
+#            scale_color_manual(values=rep(brewer.pal(8,"Dark2"),1+floor(length(levels(rc$ranked_table$group))/8)))+
+#            scale_size_area(max_size=5)+
+#            scale_alpha(limits=c(0,1),range=c(0,1))+
+#            theme_bw()+
+#            guides(color=FALSE,size=FALSE,alpha=FALSE))
+# }
 
