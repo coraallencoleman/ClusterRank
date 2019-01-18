@@ -1,11 +1,18 @@
 Package: ClusteredRanking
 Type: Package
-Title: What the Package Does (Title Case)
-Version: 0.1.0
-Author: Who wrote it
-Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
-License: What license is it under?
+Title: Complete Rankings with Mixture Model Clustering with Vizualizations
+Version: 0.1-1
+Authors@R: c(
+    person("Cora", "Allen-Coleman", email = "allencoleman@wisc.edu", role = c("aut", "cre")),
+    person("Ron", "Gangnon", role = "aut"))
+Maintainer: Cora <allencoleman@wisc.edu>
+Description: An R package for creating complete rankings with mixture model clustering & visualizations
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
+Depends: R (>= 3.1.0)
+Imports:
+    clue,
+    Hmisc,
+    reshape2,
+    RColorBrewer
