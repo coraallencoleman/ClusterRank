@@ -13,11 +13,16 @@ creates a visualization showing the ranks with clusters and confidence intervals
 ## Data Format  
 See data folder for examples.  
 ### Binomial Data
+requires: y count data, n trials
+optional: row names for items
+
 first column should be item names; second should be successes; third column should be number of trials.  
 
 ### Poisson Data
-first column should be item names; second should be successes; third column should be number of trials.  
+requires: y counts, t time
+optional: row names for items
 
 ### Normal Data
-first column should be item names; second should be means; third column should be number of standard deviations.  
+requires: means, standard deviations
+optional: row names for items
 
