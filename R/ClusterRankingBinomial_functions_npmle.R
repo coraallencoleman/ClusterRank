@@ -50,6 +50,7 @@ npmle.bin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   #return(prior for theta, prior for p_theta, posterior)
 }
 
+#TODO change all to theta to make this function universal
 rank_cluster.bin <- function(y,n,k=NULL,scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
   #assigns ranks then clusters to each item in a list for binomial data
   N <- length(y)
