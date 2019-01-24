@@ -3,14 +3,15 @@
 An R package for creating complete rankings for a list of items with mixture model clustering & visualizations   
  
 ## Functions  
-**ClusterRank(dataframe, datatype, weighted, scale, n.iter, row_names)**  
+**ClusterRank(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL)**  
 creates a full ranking from raw normal, binomial, or Poisson data  
 cassigns clusters to items within the ranking using a mixture model   
 
-**PlotClusterRank(result of cluster rank, xlab, maintitle)**     
-creates a visualization showing the ranks with clusters and confidence intervals of ranks  
+**PlotClusterRank(ClusteredRanking, xlab=NULL, maintitle=NULL)**     
+creates a visualization using the result of ClusterRank.
+Shows ranks with clusters and confidence intervals of ranks. 
 
-## Data Format  
+## Data Accepted 
 See data folder for examples.  
 ### Binomial Data
 requires: y count data, n trials
@@ -25,4 +26,12 @@ optional: row names for items
 ### Normal Data
 requires: means, standard deviations
 optional: row names for items
+
+## Hidden Functions TODO
+createClusters
+ssignRanksClusters
+cleanResults
+getmode
+plotClusterRanks
+
 
