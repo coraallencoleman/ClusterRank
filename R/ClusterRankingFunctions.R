@@ -5,24 +5,30 @@ library(reshape2)
 library(clue)
 library(Hmisc)
 library(RColorBrewer)
-
-ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
-  #assigns ranks then clusters to each item in a list
+#To fix input problems
+# ClusterRankBin() then within it calls 
+# ClusterRankPois()
+# ClusterRankNorm()
+ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype, 
+        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+        
+            #take df for y,n OR y,se OR y,optional ti instead?
+  # assigns ranks then clusters to each item in a list
   N <- length(y)
   if (datatype == "binomial"){
       if(missing(n)) {
-        error("n required for binomial data")
+        stop("n required for binomial data")
       }
       npmle_res <- npmle.bin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
   } else if (datatype == "poisson") {
       npmle_res <- npmle.pois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
   } else if (datatype == "normal"){
-        if(c(missing(n), missing(se))) {
-        error("n and se required for binomial data")
+        if(c(missing(se))) {
+        stop("se required for binomial data")
         }
       npmle_res <- npmle.norm(y=y, se=se, n=n, k=k,n.iter=n.iter,row_names=row_names)
   } else {
-    error("datatype must be binomial, poisson, or normal")
+    stop("datatype must be binomial, poisson, or normal")
   }
 
   smp <- apply(npmle_res$post_theta,1,
@@ -54,13 +60,26 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype, sc
   levels(grp) <- signif(npmle_res$theta,3) #labels
 
   ord <- order(rnk)
-
-  CI <- Hmisc::binconf(y,n) #creating confidence intervals (TODO for Pois, Normal)
-#TODO CI <- poisconf(y,n) #this depends on data type. TODO find new for pois
-#TODO CI <- normconf(y,n) #TODO find new version of this function
-
+  CI <- matrix(ncol = 3, nrow = N)
+  colnames(CI) = c("PointEst", "Lower", "Upper")
+  rownames(CI) = c(rep("", times = N))
+  if (datatype == "binomial"){
+    CI <- Hmisc::binconf(y,n) #creating confidence intervals
+  } else if (datatype == "poisson") { #TODO update to score formula
+    ests <- exactPoiCI(y, ti, conf.level=0.95)
+    CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
+    CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
+    CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
+  } else if (datatype == "normal"){
+    CI[, "PointEst"] <- mean(y)
+    CI[, "Lower"] <- mean(y) - 1.96*se
+    CI[, "Upper"] <- mean(y) + 1.96*se
+  } else {
+    stop("datatype must be binomial, poisson, or normal")
+  }
+    #TODO update this for normal make a separate function for each data type
   ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
-                             y=y,n=n,p=y/n,
+                             y=y,n=n,est = CI[,1], #p=y/n, 
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              pm=c(npmle_res$post_theta%*%npmle_res$theta),
                              p_grp=p_grp)
@@ -147,7 +166,7 @@ npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) 
     E_z[,i] <- log(p_theta[i])+dpois(y,ti*theta[i],log=TRUE)
   }
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
-
+  print(dim(E_z))
   rownames(E_z)<-row_names
   colnames(E_z)<-signif(theta,3)
 
@@ -164,7 +183,7 @@ npmle.norm <- function(y, se, n, k=NULL,n.iter=1000,row_names=NULL) {
   } else {
     theta <- seq(min(y),max(y),length=k)
   }
-  p_theta <- seq(min(y),max(y),length=k)
+  p_theta <- rep(1/k, k)
 
   E_z <- matrix(NA,length(y),k)
   for (j in 1:n.iter) {
@@ -220,4 +239,16 @@ PlotClusterRank <- function(ClusteredRanking,xlab=NULL, maintitle=NULL) {
     ggplot2::theme_bw()+
     ggplot2::guides(color=FALSE,size=FALSE,alpha=FALSE))
 }
+
+#change this to analog to Wilson interval for binomial
+#(uses phat in denom) y/t = lambda hat
+#var(lambda hat) = lT/T^2 = lambda/T. See binconf code for solving
+exactPoiCI <- function (y, ti, conf.level=0.95) {
+    alpha = 1 - conf.level
+    est = y/ti
+    upper <- 0.5 * qchisq(1-alpha/2, 2*(y/ti)+2)
+    lower <- 0.5 * qchisq(alpha/2, 2*(y/ti))
+    return(c(est,lower, upper))
+}
+
 

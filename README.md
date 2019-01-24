@@ -34,4 +34,33 @@ cleanResults
 getmode
 plotClusterRanks
 
+# TODO break into small
 
+## Distribution-Specific:  
+1. filling EM algorithm
+2. generating posterior samples
+3. generating CIs
+4. final dataframe
+5. posterior dist of theta for each county. comes from Ez (from EM)
+
+## Common:  
+sorting posterior samples (get order stat)
+assigning clusters to order stats
+assigning ranks
+
+# TODO optional output
+posterior distribution of theta for each order statistic. What is the distribution of theta for the min item, max item. We can use this to illustrate compromise how clusters get assigned to rank positions. (might be useful to save/return optionally) take existing sorted sample thing and use tapply to turn into empirrical proportion count.
+df
+order stats along rows 1:N
+posterior samples along columns
+table this ^ and divide by nsamp
+conver to 1:N (rows) col: 1:theta
+
+we want a table for each of the order stats:
+ntheta_1/nsamp
+
+this will be useful for presenting and paper. It will be a more clear picture of which cluster you belong to, but assignmting counties to order stats is harder.
+
+# Deadline  
+ - prototype package for March  
+ - 15 slide talk  for March 25  
