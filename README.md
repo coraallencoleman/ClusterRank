@@ -27,6 +27,10 @@ optional: row names for items
 requires: means, standard deviations
 optional: row names for items
 
+## Testing
+To test using test_that package, run: 
+devtools::test()
+
 ## Hidden Functions TODO
 createClusters
 ssignRanksClusters

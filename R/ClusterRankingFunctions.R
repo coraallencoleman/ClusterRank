@@ -6,12 +6,12 @@ library(clue)
 library(Hmisc)
 library(RColorBrewer)
 #To fix input problems
-# ClusterRankBin() then within it calls 
+# ClusterRankBin() then within it calls
 # ClusterRankPois()
 # ClusterRankNorm()
-ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype, 
+ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
         scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
-        
+
             #take df for y,n OR y,se OR y,optional ti instead?
   # assigns ranks then clusters to each item in a list
   N <- length(y)
@@ -39,7 +39,7 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
   smp.ord <- apply(smp,2,sort)
   if (weighted) { #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-                            #making it impossible to reassign a low variance estimate to new group
+                            #making it impossible to reassign a low variance estimate to wrong group
   }
   else {
     wgt <- rep(1,N)
@@ -54,7 +54,7 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
   rnk <- as.numeric(clue::solve_LSAP(loss))
   grp <- match(apply(smp.ord,1,getmode),scale(npmle_res$theta))[rnk]
   #matches rank positions to groups using mode. The mode version minimizes indicator (see pic)
-  #^ We could replace this with squared error diff. See pic. TODO
+  #^ We could replace this with squared error diff to make things more consistent. See pic. TODO
   grp <- factor(grp)
   p_grp <- npmle_res$post_theta[cbind(1:N,as.numeric(grp))]
   levels(grp) <- signif(npmle_res$theta,3) #labels
@@ -65,7 +65,7 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
   rownames(CI) = c(rep("", times = N))
   if (datatype == "binomial"){
     CI <- Hmisc::binconf(y,n) #creating confidence intervals
-  } else if (datatype == "poisson") { #TODO update to score formula
+  } else if (datatype == "poisson") { #TODO update to score formula for better inference
     ests <- exactPoiCI(y, ti, conf.level=0.95)
     CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
     CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
@@ -79,7 +79,7 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
   }
     #TODO update this for normal make a separate function for each data type
   ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
-                             y=y,n=n,est = CI[,1], #p=y/n, 
+                             y=y,n=n,est = CI[,1], #p=y/n,
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              pm=c(npmle_res$post_theta%*%npmle_res$theta),
                              p_grp=p_grp)
@@ -214,13 +214,15 @@ npmle.norm <- function(y, se, n, k=NULL,n.iter=1000,row_names=NULL) {
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
 }
 
+#data type agnostic
 getmode <- function(v) {
   #retrieves mode from list v
   uniqv <- unique(v)
   uniqv[which.max(tabulate(match(v, uniqv)))]
 }
 
-PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) { 
+#data type agnostic
+PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) {
   post_df <- reshape2::melt(ClusterRank$posterior)
   post_df$group <- ClusterRank$ranked_table$group[match(post_df$Var1,ClusterRank$ranked_table$name)]
   post_df$p_grp <- ClusterRank$ranked_table$p_grp[match(post_df$Var1,ClusterRank$ranked_table$name)]
