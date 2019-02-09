@@ -220,20 +220,20 @@ getmode <- function(v) {
   uniqv[which.max(tabulate(match(v, uniqv)))]
 }
 
-PlotClusterRank <- function(ClusteredRanking,xlab=NULL, maintitle=NULL) { 
-  post_df <- reshape2::melt(ClusteredRanking$posterior)
-  post_df$group <- ClusteredRanking$ranked_table$group[match(post_df$Var1,ClusteredRanking$ranked_table$name)]
-  post_df$p_grp <- ClusteredRanking$ranked_table$p_grp[match(post_df$Var1,ClusteredRanking$ranked_table$name)]
+PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) { 
+  post_df <- reshape2::melt(ClusterRank$posterior)
+  post_df$group <- ClusterRank$ranked_table$group[match(post_df$Var1,ClusterRank$ranked_table$name)]
+  post_df$p_grp <- ClusterRank$ranked_table$p_grp[match(post_df$Var1,ClusterRank$ranked_table$name)]
 
-  return(ggplot2::ggplot(ClusteredRanking$ranked_table,aes(y=name,x=p,color=group,alpha=p_grp))+
+  return(ggplot2::ggplot(ClusterRank$ranked_table,aes(y=name,x=p,color=group,alpha=p_grp))+
     ggplot2::geom_point(pch=3)+
     ggplot2::geom_point(aes(x=pm),pch=4)+
     ggplot2::geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=group,size=value,alpha=value))+
     ggplot2::geom_errorbarh(aes(xmin=p_LCL,xmax=p_UCL),height=0)+
-    ggplot2::scale_y_discrete("",limits=rev(levels(ClusteredRanking$ranked_table$name)))+
-    ggplot2::scale_x_continuous(xlab,breaks=ClusteredRanking$theta[!duplicated(round(ClusteredRanking$theta,2))],
-                     labels=round(ClusteredRanking$theta[!duplicated(round(ClusteredRanking$theta,2))],3),minor_breaks=ClusteredRanking$theta)+
-    ggplot2::scale_color_manual(values=rep(RColorBrewer::brewer.pal(8,"Dark2"),1+floor(length(levels(ClusteredRanking$ranked_table$group))/8)))+
+    ggplot2::scale_y_discrete("",limits=rev(levels(ClusterRank$ranked_table$name)))+
+    ggplot2::scale_x_continuous(xlab,breaks=ClusterRank$theta[!duplicated(round(ClusterRank$theta,2))],
+                     labels=round(ClusterRank$theta[!duplicated(round(ClusterRank$theta,2))],3),minor_breaks=ClusterRank$theta)+
+    ggplot2::scale_color_manual(values=rep(RColorBrewer::brewer.pal(8,"Dark2"),1+floor(length(levels(ClusterRank$ranked_table$group))/8)))+
     ggplot2::scale_size_area(max_size=5)+
     ggplot2::scale_alpha(limits=c(0,1),range=c(0,1))+
     ggplot2::theme_bw()+

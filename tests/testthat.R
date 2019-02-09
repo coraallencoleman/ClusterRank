@@ -1,4 +1,4 @@
 library(testthat)
-library(ClusteredRanking)
-setwd("/Users/cora/git_repos/ClusteredRanking") #TODO
-test_check("ClusteredRanking")
+library(ClusterRank)
+setwd("/Users/cora/git_repos/ClusterRank") #TODO
+test_check("ClusterRank")

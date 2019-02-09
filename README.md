@@ -7,7 +7,7 @@ An R package for creating complete rankings for a list of items with mixture mod
 creates a full ranking from raw normal, binomial, or Poisson data  
 cassigns clusters to items within the ranking using a mixture model   
 
-**PlotClusterRank(ClusteredRanking, xlab=NULL, maintitle=NULL)**     
+**PlotClusterRank(ClusterRank, xlab=NULL, maintitle=NULL)**     
 creates a visualization using the result of ClusterRank.
 Shows ranks with clusters and confidence intervals of ranks. 
 

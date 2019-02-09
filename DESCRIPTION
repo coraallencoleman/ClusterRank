@@ -1,4 +1,4 @@
-Package: ClusteredRanking
+Package: ClusterRank
 Type: Package
 Title: Complete Rankings with Mixture Model Clustering with Vizualizations
 Version: 0.1-1
