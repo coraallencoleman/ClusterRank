@@ -6,16 +6,28 @@ library(clue)
 library(Hmisc)
 library(RColorBrewer)
 
-ClusterRankBin <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
+ClusterRankBin <- function(y,n=NULL,k=NULL,
                         scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
-  # ClusterRankBin() then within it call npmleBin() #TODO DOC
-  #take df for y,n OR y,se OR y,optional ti instead?
-  # assigns ranks then clusters to each item in a list
+  # Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
+  #
+  # Args:
+  #   y: number of binomial distributed events
+  #   n: number of attempts
+  #   k: number of starting clusters desired. Defaults to length(y)
+  #   scale: scale on which to do ranking
+  #   weighted: boolean indicating if inverse variance weighted is used
+  #   n.iter: iterations used in EM algorithm
+  #   n.samp: number of samples from posterior distribution
+  #   row_names: optional row names argument
+  #
+  # Returns:
+  #     list including ranked_table, posterior, theta, pr_theta
+  #
   N <- length(y)
   if(missing(n)){
       stop("n required for binomial data")
   }
-  npmle_res <- npmle.bin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
+  npmle_res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
@@ -60,14 +72,25 @@ ClusterRankBin <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
 }
 
-# ClusterRankPois()
-ClusterRankPois <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
+ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
                         scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
-
-  #take df for y,n OR y,se OR y,optional ti instead?
-  # assigns ranks then clusters to each item in a list
+  # Assigns ranks then clusters to each item in a list based on Poisson data. Calls npmlePois()
+  #
+  # Args:
+  #   y: number of poisson distributed events
+  #   ti: time vector. Length of time.
+  #   k: number of starting clusters desired. Defaults to length(y)
+  #   scale: scale for ranking
+  #   weighted: boolean indicating if inverse variance weighted is used
+  #   n.iter: iterations used in EM algorithm
+  #   n.samp: number of samples from posterior distribution
+  #   row_names: optional row names argument
+  #
+  # Returns:
+  #     list including ranked_table, posterior, theta, pr_theta
+  #
   N <- length(y)
-  npmle_res <- npmle.pois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
+  npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
@@ -106,7 +129,7 @@ ClusterRankPois <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
   CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
   #TODO update this for normal make a separate function for each data type
   ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
-                             y=y,n=n,est = CI[,1], #p=y/n,
+                             y=y,ti=ti,est = CI[,1], #p=y/n,
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
                              p_grp=p_grp)
@@ -118,15 +141,28 @@ ClusterRankPois <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta))
 }
 
-ClusterRankNorm <- function(y,n=NULL,se,ti=rep(1,length(y)),k=NULL,
-        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
-  #take df for y,n OR y,se OR y,optional ti instead?
-  # assigns ranks then clusters to each item in a list
+ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
+                            weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+  # Assigns ranks then clusters to each item in a list based on Normal data. Calls npmleNorm()
+  #
+  # Args:
+  #   y: means for each item to be ranked
+  #   se: standard errors for each mean y
+  #   k: number of starting clusters desired. Defaults to length(y)
+  #   scale: scale for ranking
+  #   weighted: boolean indicating if inverse variance weighted is used
+  #   n.iter: iterations used in EM algorithm
+  #   n.samp: number of samples from posterior distribution
+  #   row_names: optional row names argument
+  #
+  # Returns:
+  #     list including ranked_table, posterior, theta, pr_theta
+  #
   N <- length(y)
   if(c(missing(se))) {
     stop("se required for normal data")
   }
-  npmle_res <- npmle.norm(y=y, se=se, k=k,n.iter=n.iter,row_names=row_names)
+  npmle_res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row_names=row_names)
 
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
@@ -175,8 +211,22 @@ ClusterRankNorm <- function(y,n=NULL,se,ti=rep(1,length(y)),k=NULL,
   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
 }
 
-npmle.bin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
-  #k is number of initial clusters
+npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
+  # Estimates clusters nonparametrically using an EM algorithm. Calculates the
+  # probability each item will be assigned to each cluster.
+  # Called by ClusterRankBin()
+  #
+  # Args:
+  #   y: number of binomial distributed events
+  #   n: number of attempts
+  #   k: initial number of clusters. Defaults to length(y)
+  #   n.iter: iterations used in EM algorithm
+  #   row_names: optional row names argument
+  #
+  # Returns:
+  #     list including prior for theta, prior distribution for each p_theta,
+  #                   posterior probabilities for each item's assignment to each cluster
+  #
   if (is.null(k)) {
     theta<-sort(y/n) #sorted probabilities
     k<-length(theta) #k = number of units to rank
@@ -215,11 +265,24 @@ npmle.bin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   colnames(E_z)<-signif(theta,3) #group names are rounded
 
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
-  #return(prior for theta, prior for p_theta, posterior)
 }
 
-npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
-  #y, persontime ti
+npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
+  # Estimates clusters nonparametrically using an EM algorithm. Calculates the
+  # probability each item will be assigned to each cluster.
+  # Called by ClusterRankPois()
+  #
+  # Args:
+  #   y: number of poisson distributed events
+  #   ti: length of time. defaults to 1
+  #   k: initial number of clusters. Defaults to length(y)
+  #   n.iter: iterations used in EM algorithm
+  #   row_names: optional row names argument
+  #
+  # Returns:
+  #     list including prior for theta, prior distribution for each p_theta,
+  #                   posterior probabilities for each item's assignment to each cluster
+  #
   if (is.null(k)) {
     theta<-sort(y/ti) #sorted probabilities.
     k<-length(theta) #number of groups to start
@@ -250,7 +313,6 @@ npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) 
     E_z[,i] <- log(p_theta[i])+dpois(y,ti*theta[i],log=TRUE)
   }
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
-  print(dim(E_z))
   rownames(E_z)<-row_names
   colnames(E_z)<-signif(theta,3)
 
@@ -260,7 +322,22 @@ npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) 
 #key point with normal version:
 #comes in as y, se, unknown theta, p_theta. We assume se is known here.
 #theta i hat = see pics
-npmle.norm <- function(y, se, k=NULL,n.iter=1000,row_names=NULL) {
+npmleNorm <- function(y, se, k=NULL,n.iter=1000,row_names=NULL) {
+  # Estimates clusters nonparametrically using an EM algorithm. Calculates the
+  # probability each item will be assigned to each cluster.
+  # Called by ClusterRankNorm()
+  #
+  # Args:
+  #   y: mean for each item
+  #   se: standard error for each mean y
+  #   k: initial number of clusters. Defaults to length(y)
+  #   n.iter: iterations used in EM algorithm
+  #   row_names: optional row names argument
+  #
+  # Returns:
+  #     list including prior for theta, prior distribution for each p_theta,
+  #                   posterior probabilities for each item's assignment to each cluster
+  #
   if (is.null(k)) {
     theta<-sort(y)
     k<-length(theta) #k = # groups
