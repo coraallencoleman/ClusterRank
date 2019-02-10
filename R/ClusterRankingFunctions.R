@@ -5,41 +5,26 @@ library(reshape2)
 library(clue)
 library(Hmisc)
 library(RColorBrewer)
-#To fix input problems
-# ClusterRankBin() then within it calls
-# ClusterRankPois()
-# ClusterRankNorm()
-ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
-        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
 
-            #take df for y,n OR y,se OR y,optional ti instead?
+ClusterRankBin <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
+                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+  # ClusterRankBin() then within it call npmleBin() #TODO DOC
+  #take df for y,n OR y,se OR y,optional ti instead?
   # assigns ranks then clusters to each item in a list
   N <- length(y)
-  if (datatype == "binomial"){
-      if(missing(n)) {
-        stop("n required for binomial data")
-      }
-      npmle_res <- npmle.bin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
-  } else if (datatype == "poisson") {
-      npmle_res <- npmle.pois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
-  } else if (datatype == "normal"){
-        if(c(missing(se))) {
-        stop("se required for binomial data")
-        }
-      npmle_res <- npmle.norm(y=y, se=se, n=n, k=k,n.iter=n.iter,row_names=row_names)
-  } else {
-    stop("datatype must be binomial, poisson, or normal")
+  if(missing(n)){
+      stop("n required for binomial data")
   }
-
+  npmle_res <- npmle.bin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
                theta=scale(npmle_res$theta),n.samp=n.samp)
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort)
-  if (weighted) { #inverse variance weighting
+  if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-                            #making it impossible to reassign a low variance estimate to wrong group
+    #making it impossible to reassign a low variance estimate to wrong group
   }
   else {
     wgt <- rep(1,N)
@@ -63,25 +48,67 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
   CI <- matrix(ncol = 3, nrow = N)
   colnames(CI) = c("PointEst", "Lower", "Upper")
   rownames(CI) = c(rep("", times = N))
-  if (datatype == "binomial"){
-    CI <- Hmisc::binconf(y,n) #creating confidence intervals
-  } else if (datatype == "poisson") { #TODO update to score formula for better inference
-    ests <- exactPoiCI(y, ti, conf.level=0.95)
-    CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
-    CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
-    CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
-  } else if (datatype == "normal"){
-    CI[, "PointEst"] <- mean(y)
-    CI[, "Lower"] <- mean(y) - 1.96*se
-    CI[, "Upper"] <- mean(y) + 1.96*se
-  } else {
-    stop("datatype must be binomial, poisson, or normal")
+  CI <- Hmisc::binconf(y,n) #creating confidence intervals
+  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
+                             y=y,n=n,est = CI[,1],
+                             p_LCL=CI[,2],p_UCL=CI[,3],
+                             posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
+                             p_grp=p_grp)
+  ranked_table <- ranked_table[ord,]
+  ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
+  posterior <- npmle_res$post_theta[ord,]
+  return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
+}
+
+# ClusterRankPois()
+ClusterRankPois <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,
+                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+
+  #take df for y,n OR y,se OR y,optional ti instead?
+  # assigns ranks then clusters to each item in a list
+  N <- length(y)
+  npmle_res <- npmle.pois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
+  smp <- apply(npmle_res$post_theta,1,
+               function(x,theta,n.samp)
+                 sample(theta,n.samp,replace=TRUE,prob=x),
+               theta=scale(npmle_res$theta),n.samp=n.samp)
+  smp <- t(smp)
+  smp.ord <- apply(smp,2,sort)
+  if (weighted) { #inverse variance weighting
+    wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
+    #making it impossible to reassign a low variance estimate to wrong group
   }
-    #TODO update this for normal make a separate function for each data type
+  else {
+    wgt <- rep(1,N)
+  }
+  loss <- matrix(NA,N,N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      loss[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
+    }
+  }
+
+  rnk <- as.numeric(clue::solve_LSAP(loss))
+  grp <- match(apply(smp.ord,1,getmode),scale(npmle_res$theta))[rnk]
+  #matches rank positions to groups using mode. The mode version minimizes indicator (see pic)
+  #^ We could replace this with squared error diff to make things more consistent. See pic. TODO
+  grp <- factor(grp)
+  p_grp <- npmle_res$post_theta[cbind(1:N,as.numeric(grp))]
+  levels(grp) <- signif(npmle_res$theta,3) #labels
+
+  ord <- order(rnk)
+  CI <- matrix(ncol = 3, nrow = N)
+  colnames(CI) = c("PointEst", "Lower", "Upper")
+  rownames(CI) = c(rep("", times = N))
+  ests <- exactPoiCI(y, ti, conf.level=0.95) #TODO update to score formula for better inference
+  CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
+  CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
+  CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
+  #TODO update this for normal make a separate function for each data type
   ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
                              y=y,n=n,est = CI[,1], #p=y/n,
                              p_LCL=CI[,2],p_UCL=CI[,3],
-                             pm=c(npmle_res$post_theta%*%npmle_res$theta),
+                             posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
                              p_grp=p_grp)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
@@ -89,6 +116,63 @@ ClusterRank <- function(y,n=NULL,se=NULL,ti=rep(1,length(y)),k=NULL,datatype,
   posterior <- npmle_res$post_theta[ord,]
 
   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta))
+}
+
+ClusterRankNorm <- function(y,n=NULL,se,ti=rep(1,length(y)),k=NULL,
+        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+  #take df for y,n OR y,se OR y,optional ti instead?
+  # assigns ranks then clusters to each item in a list
+  N <- length(y)
+  if(c(missing(se))) {
+    stop("se required for normal data")
+  }
+  npmle_res <- npmle.norm(y=y, se=se, k=k,n.iter=n.iter,row_names=row_names)
+
+  smp <- apply(npmle_res$post_theta,1,
+               function(x,theta,n.samp)
+                 sample(theta,n.samp,replace=TRUE,prob=x),
+               theta=scale(npmle_res$theta),n.samp=n.samp)
+  smp <- t(smp)
+  smp.ord <- apply(smp,2,sort)
+  if (weighted) { #inverse variance weighting
+    wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
+                            #making it impossible to reassign a low variance estimate to wrong group
+  }
+  else {
+    wgt <- rep(1,N)
+  }
+  loss <- matrix(NA,N,N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      loss[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
+    }
+  }
+  rnk <- as.numeric(clue::solve_LSAP(loss))
+  grp <- match(apply(smp.ord,1,getmode),scale(npmle_res$theta))[rnk]
+  #matches rank positions to groups using mode. The mode version minimizes indicator (see pic)
+  #^ We could replace this with squared error diff to make things more consistent. See pic. TODO
+  grp <- factor(grp)
+  p_grp <- npmle_res$post_theta[cbind(1:N,as.numeric(grp))]
+  levels(grp) <- signif(npmle_res$theta,3) #labels
+
+  ord <- order(rnk)
+  CI <- matrix(ncol = 3, nrow = N)
+  colnames(CI) = c("PointEst", "Lower", "Upper")
+  rownames(CI) = c(rep("", times = N))
+  CI[, "PointEst"] <- y
+  CI[, "Lower"] <- y - 1.96*se
+  CI[, "Upper"] <- y + 1.96*se
+  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
+                             y=y, se = se, est = CI[,1],
+                             p_LCL=CI[,2],p_UCL=CI[,3],
+                             posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
+                             p_grp=p_grp)
+  ranked_table <- ranked_table[ord,]
+  ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
+
+  posterior <- npmle_res$post_theta[ord,]
+
+  return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
 }
 
 npmle.bin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
@@ -176,7 +260,7 @@ npmle.pois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) 
 #key point with normal version:
 #comes in as y, se, unknown theta, p_theta. We assume se is known here.
 #theta i hat = see pics
-npmle.norm <- function(y, se, n, k=NULL,n.iter=1000,row_names=NULL) {
+npmle.norm <- function(y, se, k=NULL,n.iter=1000,row_names=NULL) {
   if (is.null(k)) {
     theta<-sort(y)
     k<-length(theta) #k = # groups
