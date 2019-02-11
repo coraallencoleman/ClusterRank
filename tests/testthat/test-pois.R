@@ -3,6 +3,10 @@ test_that("imports data", {
   expect_equal(nrow(poisData), 8)
 })
 
+test_that("Wilson Hilferty CI works", {
+  expect_equal(WilsonHilfertyPoiCI(33, 1, conf.level=0.95), c(33.00000, 22.71198, 46.34576), tolerance = .001)
+})
+
 test_that("unweighted ranking works", {
   set.seed(123)
   unweight <- ClusterRankPois(poisData$lbw, row_names=poisData$county,weighted=FALSE)

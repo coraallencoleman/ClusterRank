@@ -123,7 +123,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   CI <- matrix(ncol = 3, nrow = N)
   colnames(CI) = c("PointEst", "Lower", "Upper")
   rownames(CI) = c(rep("", times = N))
-  ests <- exactPoiCI(y, ti, conf.level=0.95) #TODO update to score formula for better inference
+  ests <- WilsonHilfertyPoiCI(y, ti, conf.level=0.95) #TODO update to score formula for better inference
   CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
   CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
   CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
@@ -403,15 +403,28 @@ PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) {
     ggplot2::guides(color=FALSE,size=FALSE,alpha=FALSE))
 }
 
-#change this to analog to Wilson interval for binomial
+#change this to analog to Wilson CI:  https://www.ine.pt/revstat/pdf/rs120203.pdf
 #(uses phat in denom) y/t = lambda hat
 #var(lambda hat) = lT/T^2 = lambda/T. See binconf code for solving
-exactPoiCI <- function (y, ti, conf.level=0.95) {
-    alpha = 1 - conf.level
-    est = y/ti
-    upper <- 0.5 * qchisq(1-alpha/2, 2*(y/ti)+2)
-    lower <- 0.5 * qchisq(alpha/2, 2*(y/ti))
-    return(c(est,lower, upper))
+WilsonHilfertyPoiCI <- function (x, ti, conf.level=0.95) {
+  # Calculates approximate Poisson CI by Wilson & Hilferty (1931)
+  #
+  # Args:
+  #   x: number of Poisson-distributed events
+  #   ti: length of time. defaults to 1
+  #   conf.level: desired converage for confidence intervals
+  #
+  # Returns:
+  #     vector containing estimate, lower bound, upper bound
+  #
+  est = x/ti
+  est1 = est+1
+  alpha = 1 - conf.level
+  alpha1 = 1-alpha/2
+  Z_alpha1 = qnorm(alpha1)
+  lower = est*(1-(1/(9*est)) - (Z_alpha1/(3*sqrt(est))))^3
+  upper = est1*(1-(1/(9*est1)) + (Z_alpha1/(3*sqrt(est1))))^3
+  return(c(est,lower, upper))
 }
 
 
