@@ -34,10 +34,10 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
                  sample(theta,n.samp,replace=TRUE,prob=x),
                theta=scale(npmle_res$theta),n.samp=n.samp)
   smp <- t(smp) #transposes
-  smp.ord <- apply(smp,2,sort) #sorts samples by ??
+  smp.ord <- apply(smp,2,sort)
   if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-    #making it impossible to reassign a low variance estimate to wrong group
+    #making it impossible to reassign a low variance estimate to wrong rank TODO or is it cluster?
   }
   else {
     wgt <- rep(1,N)
@@ -49,7 +49,7 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
       lossRank[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
-  totalRankLoss = sum(lossRank)
+  #totalRankLoss = sum(diag(lossRank)) #todo check
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
 
   # square error loss cluster optimization
@@ -59,8 +59,8 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
       lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
     }
   }
-  totalClusterLoss <- sum(lossCluster)
-  cluster <- apply(lossCluster, 1, which.min) #TODO check
+  #totalClusterLoss <- sum(lossCluster)
+  cluster <- apply(lossCluster, 1, which.min)
   cluster <- factor(cluster)
   p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
   levels(cluster) <- signif(npmle_res$theta,3) #labels
@@ -103,12 +103,12 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   smp <- apply(npmle_res$post_theta,1, #samples from a centered version of npmle_res$theta with pr = post_theta
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
-               theta=scale(npmle_res$theta),n.samp=n.samp) #why centered? to prevent underflow problems?
+               theta=scale(npmle_res$theta),n.samp=n.samp)
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort)
   if (weighted) { #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-    #making it impossible to reassign a low variance estimate to wrong group
+    #making it impossible to reassign a low variance estimate to wrong cluster
   }
   else {
     wgt <- rep(1,N)
@@ -142,7 +142,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   CI[, "PointEst"] <- ests[1]
   CI[, "Lower"] <- ests[2]
   CI[, "Upper"] <- ests[3]
-  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(cluster),
+  ranked_table <- data.frame(name=row_names,rank=rnk,cluster=factor(cluster),
                              y=y,ti=ti,est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
@@ -183,10 +183,13 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
                  sample(theta,n.samp,replace=TRUE,prob=x),
                theta=scale(npmle_res$theta),n.samp=n.samp)
   smp <- t(smp)
-  smp.ord <- apply(smp,2,sort)
+  smp.ord <- apply(smp,2,sort) #
+  #posterior distribution of theta
+  post_dist_theta <- t(apply(round(smp.ord,6), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle_res$theta),6)))
+  #TODO option to return
   if (weighted) { #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-                            #making it impossible to reassign a low variance estimate to wrong group
+                            #making it impossible to reassign a low variance estimate to wrong cluster
   }
   else {
     wgt <- rep(1,N)
@@ -220,7 +223,7 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   CI[, "PointEst"] <- y
   CI[, "Lower"] <- y - 1.96*se
   CI[, "Upper"] <- y + 1.96*se
-  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(cluster),
+  ranked_table <- data.frame(name=row_names,rank=rnk,cluster=factor(cluster),
                              y=y, se = se, est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
@@ -257,7 +260,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   }
   p_theta <- rep(1/k,k) #probabilities of each mass point.
 
-  E_z <- matrix(NA,length(y),k) #expected value of the probability that you're in each of the k theta groups
+  E_z <- matrix(NA,length(y),k) #expected value of the probability that you're in each of the k theta clusters
   #calculating the p that z_{ij} is equal to theta star j
   for (j in 1:n.iter) {
     for (i in 1:k) {
@@ -266,7 +269,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
     }
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
     p_theta <- apply(E_z,2,mean) #M-step: means over the matrix
-    theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each group
+    theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
   }
   #this reduces down to needed number of clusters (<=k)
   ord<-order(theta)
@@ -311,7 +314,7 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
   } else {
     theta <- seq(min(y/ti),max(y/ti),length=k)
   }
-  p_theta <- rep(1/k,k) #evenly spaced probabilities between 0 and 1 for clusters?
+  p_theta <- rep(1/k,k) #evenly spaced probabilities between 0 and 1 for clusters
 
   E_z <- matrix(NA,length(y),k)
   for (j in 1:n.iter) {
