@@ -121,14 +121,20 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
       loss[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
-
+  totalRankLoss = sum(lossRank)
   rnk <- as.numeric(clue::solve_LSAP(loss))
-  grp <- match(apply(smp.ord,1,getmode),scale(npmle_res$theta))[rnk]
-  #matches rank positions to groups using mode. The mode version minimizes indicator (see pic)
-  #^ We could replace this with squared error diff to make things more consistent. See pic. TODO
-  grp <- factor(grp)
-  p_grp <- npmle_res$post_theta[cbind(1:N,as.numeric(grp))]
-  levels(grp) <- signif(npmle_res$theta,3) #labels
+  # square error loss cluster optimization
+  lossCluster <- matrix(NA,N,length(npmle_res$theta))
+  for (i in 1:N) {
+    for (j in 1:length(npmle_res$theta)) {
+      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
+    }
+  }
+  totalClusterLoss <- sum(lossCluster)
+  cluster <- apply(lossCluster, 1, which.min) #TODO check
+  cluster <- factor(cluster)
+  p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
+  levels(cluster) <- signif(npmle_res$theta,3) #labels
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
@@ -138,11 +144,11 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
   CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
   CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
-  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
+  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(cluster),
                              y=y,ti=ti,est = CI[,1], #p=y/n,
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
-                             p_grp=p_grp)
+                             p_cluster=p_cluster)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
 
@@ -193,13 +199,21 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
       loss[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
+  totalRankLoss = sum(lossRank)
   rnk <- as.numeric(clue::solve_LSAP(loss))
-  grp <- match(apply(smp.ord,1,getmode),scale(npmle_res$theta))[rnk]
-  #matches rank positions to groups using mode. The mode version minimizes indicator (see pic)
-  #^ We could replace this with squared error diff to make things more consistent. See pic. TODO
-  grp <- factor(grp)
-  p_grp <- npmle_res$post_theta[cbind(1:N,as.numeric(grp))]
-  levels(grp) <- signif(npmle_res$theta,3) #labels
+
+  # square error loss cluster optimization
+  lossCluster <- matrix(NA,N,length(npmle_res$theta))
+  for (i in 1:N) {
+    for (j in 1:length(npmle_res$theta)) {
+      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
+    }
+  }
+  totalClusterLoss <- sum(lossCluster)
+  cluster <- apply(lossCluster, 1, which.min) #TODO check
+  cluster <- factor(cluster)
+  p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
+  levels(cluster) <- signif(npmle_res$theta,3) #labels
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
@@ -208,11 +222,11 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   CI[, "PointEst"] <- y
   CI[, "Lower"] <- y - 1.96*se
   CI[, "Upper"] <- y + 1.96*se
-  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
+  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(cluster),
                              y=y, se = se, est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
-                             p_grp=p_grp)
+                             p_cluster=p_cluster)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
 
@@ -396,9 +410,9 @@ getmode <- function(v) {
 PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) {
   post_df <- reshape2::melt(ClusterRank$posterior)
   post_df$group <- ClusterRank$ranked_table$group[match(post_df$Var1,ClusterRank$ranked_table$name)]
-  post_df$p_grp <- ClusterRank$ranked_table$p_grp[match(post_df$Var1,ClusterRank$ranked_table$name)]
+  post_df$p_cluster <- ClusterRank$ranked_table$p_cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
 
-  return(ggplot2::ggplot(ClusterRank$ranked_table,aes(y=name,x=p,color=group,alpha=p_grp))+
+  return(ggplot2::ggplot(ClusterRank$ranked_table,aes(y=name,x=p,color=group,alpha=p_cluster))+
     ggplot2::geom_point(pch=3)+
     ggplot2::geom_point(aes(x=pm),pch=4)+
     ggplot2::geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=group,size=value,alpha=value))+
