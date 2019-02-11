@@ -21,19 +21,21 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   #   row_names: optional row names argument
   #
   # Returns:
-  #     list including ranked_table, posterior, theta, pr_theta
+  #     list including ranked_table, posterior, cluster theta, pr_theta
   #
   N <- length(y)
   if(missing(n)){
       stop("n required for binomial data")
   }
   npmle_res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
+  # samples from posterior distribution. Samples from cluster thetas with prob x = post_theta
+  #TODO rewrite to make this operation more clear, less dense
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
-               theta=scale(npmle_res$theta),n.samp=n.samp)
-  smp <- t(smp)
-  smp.ord <- apply(smp,2,sort)
+               theta=scale(npmle_res$theta),n.samp=n.samp) #TODO why centers?
+  smp <- t(smp) #transposes
+  smp.ord <- apply(smp,2,sort) #sorts samples by ??
   if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
     #making it impossible to reassign a low variance estimate to wrong group
@@ -41,31 +43,39 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   else {
     wgt <- rep(1,N)
   }
-  loss <- matrix(NA,N,N)
+  #weighted square error loss rank optimization
+  lossRank <- matrix(NA,N,N)
   for (i in 1:N) {
     for (j in 1:N) {
-      loss[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
+      lossRank[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
+  totalRankLoss = sum(lossRank)
+  rnk <- as.numeric(clue::solve_LSAP(lossRank))
 
-  rnk <- as.numeric(clue::solve_LSAP(loss))
-  grp <- match(apply(smp.ord,1,getmode),scale(npmle_res$theta))[rnk]
-  #matches rank positions to groups using mode. The mode version minimizes indicator (see pic)
-  #^ We could replace this with squared error diff to make things more consistent. See pic. TODO
-  grp <- factor(grp)
-  p_grp <- npmle_res$post_theta[cbind(1:N,as.numeric(grp))]
-  levels(grp) <- signif(npmle_res$theta,3) #labels
+  # square error loss cluster optimization
+  lossCluster <- matrix(NA,N,length(npmle_res$theta))
+  for (i in 1:N) {
+    for (j in 1:length(npmle_res$theta)) {
+      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
+    }
+  }
+  totalClusterLoss <- sum(lossCluster)
+  cluster <- apply(lossCluster, 1, which.min) #TODO check
+  cluster <- factor(cluster)
+  p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
+  levels(cluster) <- signif(npmle_res$theta,3) #labels
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
   colnames(CI) = c("PointEst", "Lower", "Upper")
   rownames(CI) = c(rep("", times = N))
   CI <- Hmisc::binconf(y,n) #creating confidence intervals
-  ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
+  ranked_table <- data.frame(name=row_names,rank=rnk,cluster=factor(cluster),
                              y=y,n=n,est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
-                             p_grp=p_grp)
+                             p_cluster=p_cluster)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
   posterior <- npmle_res$post_theta[ord,]
@@ -91,10 +101,11 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #
   N <- length(y)
   npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
-  smp <- apply(npmle_res$post_theta,1,
+  #TODO rewrite to make this operation more clear, less dense
+  smp <- apply(npmle_res$post_theta,1, #samples from a centered version of npmle_res$theta with pr = post_theta
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
-               theta=scale(npmle_res$theta),n.samp=n.samp)
+               theta=scale(npmle_res$theta),n.samp=n.samp) #why centered? to prevent underflow problems?
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort)
   if (weighted) { #inverse variance weighting
@@ -123,11 +134,10 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   CI <- matrix(ncol = 3, nrow = N)
   colnames(CI) = c("PointEst", "Lower", "Upper")
   rownames(CI) = c(rep("", times = N))
-  ests <- WilsonHilfertyPoiCI(y, ti, conf.level=0.95) #TODO update to score formula for better inference
+  ests <- WilsonHilfertyPoiCI(y, ti, conf.level=0.95)
   CI[, "PointEst"] <- ests[1] #as.numeric(poisson.test(y, T=ti, conf.level = 0.95)$estimate)
   CI[, "Lower"] <- ests[2] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[1]
   CI[, "Upper"] <- ests[3] #poisson.test(y, T=ti, conf.level = 0.95)$conf.int[2]
-  #TODO update this for normal make a separate function for each data type
   ranked_table <- data.frame(name=row_names,rank=rnk,group=factor(grp),
                              y=y,ti=ti,est = CI[,1], #p=y/n,
                              p_LCL=CI[,2],p_UCL=CI[,3],
@@ -224,7 +234,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   #   row_names: optional row names argument
   #
   # Returns:
-  #     list including prior for theta, prior distribution for each p_theta,
+  #     list including clusters thetas, prior distribution for each p_theta,
   #                   posterior probabilities for each item's assignment to each cluster
   #
   if (is.null(k)) {

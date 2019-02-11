@@ -3,7 +3,7 @@
 An R package for creating complete rankings for a list of items with mixture model clustering & visualizations   
  
 ## Functions  
-**ClusterRankBinfunction (y,n=NULL,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL)**
+**ClusterRankBin**
   Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
 
   Args:
@@ -20,7 +20,7 @@ An R package for creating complete rankings for a list of items with mixture mod
       list including ranked_table, posterior, theta, pr_theta
 
 
-**ClusterRankPois(y,ti=rep(1,length(y)),k=NULL, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL)**
+**ClusterRankPois**
   Assigns ranks then clusters to each item in a list based on Poisson data. Calls npmlePois()
 
   Args:
@@ -36,7 +36,7 @@ An R package for creating complete rankings for a list of items with mixture mod
   Returns:
       list including ranked_table, posterior, theta, pr_theta
 
-**ClusterRankNorm(y,n=NULL,se,k=NULL, scale=identity, weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL)**
+**ClusterRankNorm**
   Assigns ranks then clusters to each item in a list based on Normal data. Calls npmleNorm()
 
   Args:
@@ -58,15 +58,15 @@ creates a visualization using the result of ClusterRankBin, ClusterRankPois or C
 ## Data Accepted 
 See data folder for examples.  
 
-### Binomial Data
+**Binomial Data**
 requires: y count data, n trials
 optional: row names for items
 
-### Poisson Data
+**Poisson Data**
 requires: y counts, t time
 optional: row names for items
 
-### Normal Data
+**Normal Data**
 requires: means, standard deviations
 optional: row names for items
 
