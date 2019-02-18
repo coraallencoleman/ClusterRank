@@ -7,7 +7,7 @@ library(Hmisc)
 library(RColorBrewer)
 
 ClusterRankBin <- function(y,n=NULL,k=NULL,
-                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
   #
   # Args:
@@ -18,7 +18,7 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   #   weighted: boolean indicating if inverse variance weighted is used
   #   n.iter: iterations used in EM algorithm
   #   n.samp: number of samples from posterior distribution
-  #   row_names: optional row names argument
+  #   row.names: optional row names argument
   #
   # Returns:
   #     list including ranked_table, posterior, cluster theta, pr_theta
@@ -27,7 +27,7 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   if(missing(n)){
       stop("n required for binomial data")
   }
-  npmle_res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row_names=row_names)
+  npmle_res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row.names=row.names)
   # samples from posterior distribution. Samples from cluster thetas with prob x = post_theta
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
@@ -37,7 +37,7 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   smp.ord <- apply(smp,2,sort)
   if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-    #making it impossible to reassign a low variance estimate to wrong rank TODO or is it cluster?
+    #making it impossible to reassign a low variance estimate to wrong rank? (or is it cluster?
   }
   else {
     wgt <- rep(1,N)
@@ -63,14 +63,14 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   cluster <- apply(lossCluster, 1, which.min)
   cluster <- factor(cluster)
   p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
-  levels(cluster) <- signif(npmle_res$theta,3) #labels
+  levels(cluster) <- signif(npmle_res$theta,sig.digits) #labels
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
   colnames(CI) = c("PointEst", "Lower", "Upper")
   rownames(CI) = c(rep("", times = N))
   CI <- Hmisc::binconf(y,n) #creating confidence intervals
-  ranked_table <- data.frame(name=row_names,rank=rnk,cluster=factor(cluster),
+  ranked_table <- data.frame(name=row.names,rank=rnk,cluster=factor(cluster),
                              y=y,n=n,est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
@@ -78,11 +78,16 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
   posterior <- npmle_res$post_theta[ord,]
-  return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
+
+  if (return.post) {
+    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta, smp=smp,smp.ord=smp.ord, ord=ord))
+  } else{
+    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
+  }
 }
 
 ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
-                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Poisson data. Calls npmlePois()
   #
   # Args:
@@ -93,13 +98,13 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #   weighted: boolean indicating if inverse variance weighted is used
   #   n.iter: iterations used in EM algorithm
   #   n.samp: number of samples from posterior distribution
-  #   row_names: optional row names argument
+  #   row.names: optional row names argument
   #
   # Returns:
   #     list including ranked_table, posterior, theta, pr_theta
   #
   N <- length(y)
-  npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row_names=row_names)
+  npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row.names=row.names)
   smp <- apply(npmle_res$post_theta,1, #samples from a centered version of npmle_res$theta with pr = post_theta
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
@@ -132,7 +137,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   cluster <- apply(lossCluster, 1, which.min) #TODO check
   cluster <- factor(cluster)
   p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
-  levels(cluster) <- signif(npmle_res$theta,3) #labels
+  levels(cluster) <- signif(npmle_res$theta,sig.digits) #labels
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
@@ -142,7 +147,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   CI[, "PointEst"] <- ests[1]
   CI[, "Lower"] <- ests[2]
   CI[, "Upper"] <- ests[3]
-  ranked_table <- data.frame(name=row_names,rank=rnk,cluster=factor(cluster),
+  ranked_table <- data.frame(name=row.names,rank=rnk,cluster=factor(cluster),
                              y=y,ti=ti,est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
@@ -152,11 +157,15 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
 
   posterior <- npmle_res$post_theta[ord,]
 
-  return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta))
+  if (return.post) {
+    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta, smp=smp,smp.ord=smp.ord, ord=ord))
+  } else{
+    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
+  }
 }
 
 ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
-                            weighted=TRUE,n.iter=1000,n.samp=10000,row_names=NULL) {
+                            weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Normal data. Calls npmleNorm()
   #
   # Args:
@@ -167,7 +176,7 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   #   weighted: boolean indicating if inverse variance weighted is used
   #   n.iter: iterations used in EM algorithm
   #   n.samp: number of samples from posterior distribution
-  #   row_names: optional row names argument
+  #   row.names: optional row names argument
   #
   # Returns:
   #     list including ranked_table, posterior, theta, pr_theta
@@ -176,7 +185,7 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   if(c(missing(se))) {
     stop("se required for normal data")
   }
-  npmle_res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row_names=row_names)
+  npmle_res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row.names=row.names)
 
   smp <- apply(npmle_res$post_theta,1,
                function(x,theta,n.samp)
@@ -214,7 +223,7 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   cluster <- apply(lossCluster, 1, which.min) #TODO check
   cluster <- factor(cluster)
   p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
-  levels(cluster) <- signif(npmle_res$theta,3) #labels for clusters
+  levels(cluster) <- signif(npmle_res$theta,sig.digits) #labels for clusters
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
@@ -223,7 +232,7 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   CI[, "PointEst"] <- y
   CI[, "Lower"] <- y - 1.96*se
   CI[, "Upper"] <- y + 1.96*se
-  ranked_table <- data.frame(name=row_names,rank=rnk,cluster=factor(cluster),
+  ranked_table <- data.frame(name=row.names,rank=rnk,cluster=factor(cluster),
                              y=y, se = se, est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
                              posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
@@ -232,11 +241,14 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
 
   posterior <- npmle_res$post_theta[ord,]
-
-  return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
+  if (return.post) {
+    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta, smp=smp,smp.ord=smp.ord, ord=ord))
+  } else{
+    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
+  }
 }
 
-npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
+npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names=NULL) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankBin()
@@ -246,7 +258,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   #   n: number of attempts
   #   k: initial number of clusters. Defaults to length(y)
   #   n.iter: iterations used in EM algorithm
-  #   row_names: optional row names argument
+  #   row.names: optional row names argument
   #
   # Returns:
   #     list including clusters thetas, prior distribution for each p_theta,
@@ -286,13 +298,13 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row_names=NULL) {
   }
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities. subtracts max to avoid underflow
 
-  rownames(E_z)<-row_names
-  colnames(E_z)<-signif(theta,3) #cluster names are rounded
+  rownames(E_z)<-row.names
+  colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
 
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
 }
 
-npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
+npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names=NULL) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankPois()
@@ -302,7 +314,7 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
   #   ti: length of time. defaults to 1
   #   k: initial number of clusters. Defaults to length(y)
   #   n.iter: iterations used in EM algorithm
-  #   row_names: optional row names argument
+  #   row.names: optional row names argument
   #
   # Returns:
   #     list including prior for theta, prior distribution for each p_theta,
@@ -338,8 +350,8 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
     E_z[,i] <- log(p_theta[i])+dpois(y,ti*theta[i],log=TRUE)
   }
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
-  rownames(E_z)<-row_names
-  colnames(E_z)<-signif(theta,3)
+  rownames(E_z)<-row.names
+  colnames(E_z)<-signif(theta,sig.digits)
 
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
 }
@@ -347,7 +359,7 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row_names=NULL) {
 #key point with normal version:
 #comes in as y, se, unknown theta, p_theta. We assume se is known here.
 #theta i hat = see pics
-npmleNorm <- function(y, se, k=NULL,n.iter=1000,row_names=NULL) {
+npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names=NULL) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankNorm()
@@ -357,7 +369,7 @@ npmleNorm <- function(y, se, k=NULL,n.iter=1000,row_names=NULL) {
   #   se: standard error for each mean y
   #   k: initial number of clusters. Defaults to length(y)
   #   n.iter: iterations used in EM algorithm
-  #   row_names: optional row names argument
+  #   row.names: optional row names argument
   #
   # Returns:
   #     list including prior for theta, prior distribution for each p_theta,
@@ -394,8 +406,8 @@ npmleNorm <- function(y, se, k=NULL,n.iter=1000,row_names=NULL) {
   }
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
 
-  rownames(E_z)<-row_names
-  colnames(E_z)<-signif(theta,3)
+  rownames(E_z)<-row.names
+  colnames(E_z)<-signif(theta,sig.digits)
 
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
 }
