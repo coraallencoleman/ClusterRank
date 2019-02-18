@@ -7,27 +7,27 @@ test_that("imports data", {
 
 test_that("unweighted ranking works", {
   set.seed(123)
-  unweight <- ClusterRankBin(binData$lbw,binData$births,row_names=binData$county,weighted=FALSE)
+  unweight <- ClusterRankBin(binData$lbw,binData$births,row.names=binData$county,weighted=FALSE)
   expect_equal(unweight$theta, c(0.06100767, 0.07160035, 0.07573636, 0.08206402, 0.08547410))
   expect_equal(as.vector(unweight$ranked_table$name), c("Middlesex", "Tolland", "Litchfield", "Windham", "New London", "Fairfield", "New Haven", "Hartford"))
 })
 
 test_that("weighted ranking works", {
   set.seed(123)
-  weight <- ClusterRankBin(binData$lbw,binData$births,row_names=binData$county,weighted=TRUE)
+  weight <- ClusterRankBin(binData$lbw,binData$births,row.names=binData$county,weighted=TRUE)
   expect_equal(weight$theta, c(0.06100767, 0.07160035, 0.07573636, 0.08206402, 0.08547410))
   expect_equal(as.vector(weight$ranked_table$name), c("Middlesex", "Tolland", "Litchfield", "Windham", "New London", "Fairfield", "New Haven", "Hartford"))
 })
 
 test_that("unweighted ranking on rank scale works", {
   set.seed(123)
-  unweight_rank <- ClusterRankBin(binData$lbw,binData$births,row_names=binData$county, scale=rank, weighted=FALSE)
+  unweight_rank <- ClusterRankBin(binData$lbw,binData$births,row.names=binData$county, scale=rank, weighted=FALSE)
   expect_equal(unweight_rank$theta, c(0.06100767, 0.07160035, 0.07573636, 0.08206402, 0.08547410))
 })
 
 test_that("weighted ranking on rank scale works", {
   set.seed(123)
-  weight_rank <- ClusterRankBin(binData$lbw,binData$births,row_names=binData$county, scale=rank, weighted=TRUE)
+  weight_rank <- ClusterRankBin(binData$lbw,binData$births,row.names=binData$county, scale=rank, weighted=TRUE)
     expect_equal(weight_rank$theta, c(0.06100767, 0.07160035, 0.07573636, 0.08206402, 0.08547410))
 })
 
