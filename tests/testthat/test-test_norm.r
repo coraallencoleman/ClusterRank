@@ -36,5 +36,11 @@ test_that("weighted ranking on rank scale works", {
                                                   "Fairfield", "Hartford", "New Haven", "Windham"))
 })
 
+test_that("null row.names weighted ranking on rank scale works", {
+  set.seed(123)
+  weight_rank <- ClusterRankNorm(normData$mean,se = normData$se, scale=rank, weighted=TRUE)
+  expect_equal(weight_rank$theta, c(2.931671, 3.081624, 3.459036), tolerance = .001)
+  expect_equal(as.vector(weight_rank$ranked_table$name), paste(c(4, 7, 3, 6, 1, 2, 5, 8)))
+})
 #test plotting later? plot_rt(rc = unweight)
 

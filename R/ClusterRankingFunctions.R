@@ -6,7 +6,7 @@ library(clue)
 library(Hmisc)
 library(RColorBrewer)
 
-ClusterRankBin <- function(y,n=NULL,k=NULL,
+ClusterRankBin <- function(y,n,k=NULL,
                         scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
   #
@@ -19,6 +19,7 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   #   n.iter: iterations used in EM algorithm
   #   n.samp: number of samples from posterior distribution
   #   row.names: optional row names argument
+  #   sig.digits: optional significant digits argument
   #
   # Returns:
   #     list including ranked_table, posterior, cluster theta, pr_theta
@@ -26,6 +27,14 @@ ClusterRankBin <- function(y,n=NULL,k=NULL,
   N <- length(y)
   if(missing(n)){
       stop("n required for binomial data")
+  }
+  if (is.null(row.names)){
+    row.names = paste(seq(1:N))
+  }
+ # return(c(length(y), length(n), length(row.names)))
+  #TODO there's probably a more elegant way, right?
+  if (!all.equal(length(y), length(n)) & !all.equal(length(y),length(row.names))){
+    stop("y, n, and row.names must be vectors of the same length")
   }
   npmle_res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
   # samples from posterior distribution. Samples from cluster thetas with prob x = post_theta
@@ -106,7 +115,13 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #     list including ranked_table, posterior, cluster thetas, pr_theta
   #
   N <- length(y)
-
+  if (is.null(row.names)){
+    row.names = paste(seq(1:N))
+  }
+  #TODO there's probably a more elegant way, right?
+  if (!all.equal(length(y), length(ti)) & !all.equal(length(y),length(row.names))){
+    stop("y, ti, and row.names must be vectors of the same length")
+  }
   npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
   smp <- apply(npmle_res$post_theta,1, #samples from a centered version of npmle_res$theta with pr = post_theta
                function(x,theta,n.samp)
@@ -166,7 +181,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   }
 }
 
-ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
+ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
                             weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Normal data. Calls npmleNorm()
   #
@@ -186,6 +201,13 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   N <- length(y)
   if(c(missing(se))) {
     stop("se required for normal data")
+  }
+  if (is.null(row.names)){
+    row.names = paste(seq(1:N))
+  }
+  #TODO there's probably a more elegant way, right?
+  if (!all.equal(length(y), length(se)) & !all.equal(length(y),length(row.names))){
+    stop("y, se, and row.names must be vectors of the same length")
   }
   npmle_res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
   # samples from posterior distribution. Samples from cluster thetas with prob x = post_theta
@@ -211,8 +233,7 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
     }
   }
   #totalRankLoss = sum(diag(lossRank)) #todo check
-    rnk <- as.numeric(clue::solve_LSAP(lossRank))
-
+  rnk <- as.numeric(clue::solve_LSAP(lossRank))
   # square error loss cluster optimization
   lossCluster <- matrix(NA,N,length(npmle_res$theta))
   for (i in 1:N) {
@@ -248,7 +269,9 @@ ClusterRankNorm <- function(y,n=NULL,se,k=NULL, scale=identity,
   }
 }
 
-npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names=NULL, sig.digits=sig.digits) {
+#NOTE: The npmle functions should only be called by the ClusterRank functions
+
+npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankBin()
@@ -296,15 +319,15 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names=NULL, sig.digits=sig.digit
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
   }
-  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities. subtracts max to avoid underflow
-
+  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
+  return(E_z)
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
 
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
 }
 
-npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names=NULL, sig.digits=sig.digits) {
+npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.digits) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankPois()
@@ -359,7 +382,7 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names=NULL, s
 #key point with normal version:
 #comes in as y, se, unknown theta, p_theta. We assume se is known here.
 #theta i hat = see pics
-npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names=NULL, sig.digits=sig.digits) {
+npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names, sig.digits) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankNorm()
@@ -419,7 +442,7 @@ getmode <- function(v) {
 }
 
 #data type agnostic
-PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) {
+PlotClusterRank <- function(ClusterRank,xlab="Ranking Scale", maintitle="Clustered Rankings") {
   # Creates a plot for a ClusterRank object
   #
   # Args:
@@ -431,14 +454,19 @@ PlotClusterRank <- function(ClusterRank,xlab=NULL, maintitle=NULL) {
   #     a visualization using the result of ClusterRankBin, ClusterRankPois or ClusterRankNorm.
   #     Shows ranks with clusters and confidence intervals of ranks.
   #
+  require(ggplot2) #TODO is this the best way to solve this problem?
   post_df <- reshape2::melt(ClusterRank$posterior)
-  post_df$cluster <- ClusterRank$ranked_table$cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
-  post_df$p_cluster <- ClusterRank$ranked_table$p_cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
+
+  #post_df$cluster <- ClusterRank$ranked_table$cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
+  #post_df$p_cluster <- ClusterRank$ranked_table$p_cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
 
   return(ggplot2::ggplot(ClusterRank$ranked_table,aes(y=name,x=est,color=cluster,alpha=p_cluster))+
     ggplot2::geom_point(pch=3)+
     ggplot2::geom_point(aes(x=posteriorMean),pch=4)+
-    ggplot2::geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=cluster,size=value,alpha=value))+
+      #TODO value isn't being plotted correctly here. Why? The melted df looks okay
+    ggplot2::geom_point(data=post_df, aes(y=Var1, x=Var2, color = as.factor(Var2),
+                                          alpha = value, size = value))+
+    #ggplot2::geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=cluster, size=value,alpha=value))+
     ggplot2::geom_errorbarh(aes(xmin=p_LCL,xmax=p_UCL),height=0)+
     ggplot2::scale_y_discrete("",limits=rev(levels(ClusterRank$ranked_table$name)))+
     ggplot2::scale_x_continuous(xlab,breaks=ClusterRank$theta[!duplicated(round(ClusterRank$theta,2))],

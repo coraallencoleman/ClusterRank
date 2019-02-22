@@ -31,4 +31,11 @@ test_that("weighted ranking on rank scale works", {
     expect_equal(weight_rank$theta, c(0.06100767, 0.07160035, 0.07573636, 0.08206402, 0.08547410))
 })
 
+test_that("null row.names weighted ranking on rank scale works", {
+  set.seed(123)
+  weight_rank_NULL <- ClusterRankBin(binData$lbw,binData$births, scale=rank, weighted=TRUE)
+  expect_equal(weight_rank_NULL$theta, c(0.06100767, 0.07160035, 0.07573636, 0.08206402, 0.08547410))
+  expect_equal(as.vector(weight_rank_NULL$ranked_table$name), paste(c(4, 3, 7, 8, 6, 1, 5, 2)))
+  })
+
 #test plotting later? plot_rt(rc = unweight)

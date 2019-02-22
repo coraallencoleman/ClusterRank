@@ -36,4 +36,11 @@ test_that("weighted ranking on rank scale works", {
   expect_equal(as.vector(weight_rank$ranked_table$name), c("Middlesex", "Tolland", "Windham", "Litchfield", "New London", "New Haven", "Fairfield", "Hartford"))
 })
 
+test_that("null row.names weighted ranking on rank scale works", {
+  set.seed(123)
+  weight_rank <- ClusterRankPois(poisData$lbw, scale=rank, weighted=TRUE)
+  expect_equal(weight_rank$theta, c(603.6664,744.9961, 1454.0000, 5306.1863, 5590.3703, 5802.2132))
+  expect_equal(as.vector(weight_rank$ranked_table$name), paste(c(4, 7, 8, 3, 6, 5, 1, 2)))
+})
+
 #test plotting later? plot_rt(rc = unweight)
