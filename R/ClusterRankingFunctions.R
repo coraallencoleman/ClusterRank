@@ -29,8 +29,11 @@ ClusterRankBin <- function(y,n,k=NULL,
       stop("n required for binomial data")
   }
   if (is.null(row.names)){
-    row.names = paste(seq(1:N))
+    row.names <- as.character(seq(1:N))
   }
+  # } else if (typeof(row.names) != character){ #TODO fix this
+  #   row.names <- as.character(row.names)
+  # }
  # return(c(length(y), length(n), length(row.names)))
   #TODO there's probably a more elegant way, right?
   if (!all.equal(length(y), length(n)) & !all.equal(length(y),length(row.names))){
@@ -62,7 +65,19 @@ ClusterRankBin <- function(y,n,k=NULL,
   }
   #totalRankLoss = sum(diag(lossRank)) #todo check
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
-
+  #this function ^ will do assignment even if there are duplicates
+  #TODO check here for ties
+#  ties_table <- apply(smp.ord, 1, table())
+ # for item in ties_table{
+    #if (tiestable[item] == ties_table[item+1])
+      add to tie breaking
+  }
+  #better to compare columns in smp.ord If you find duplicate columns
+  which(duplicated(x, MARGIN = 2)) #if 3 is result, we know 2 and 3 are duplicates.
+  #Always, the one to the left is the first of these
+  #if (ties_tables has duplicate items){ #you can just check adjacent ones because its ordered
+    #apply tie breaker for these rows
+  #}
   # square error loss cluster optimization
   lossCluster <- matrix(NA,N,length(npmle_res$theta))
   for (i in 1:N) {
@@ -314,13 +329,17 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
   p_theta <- tapply(p_theta,cumsum(!duplicated(round(theta,sig.digits))),sum) #cumsum numbers clusters is ascending order. sums the pthetas that goes with each cluster. See pictures
   theta <- theta[!duplicated(round(theta,sig.digits))] #removes duplicate thetas
 
+  print(length(theta))
   E_z <- matrix(NA,length(y),length(theta))
   #final posterior probabilties for each county. Pr(county in cluster i)
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
   }
+  #TODO apply is transposing and returning it in rows for cluster = 1
+  #make a special case when nclusters = 1
   E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
-  return(E_z)
+  print(dim(E_z)) #TODO when nclusters = 1, the matrix is transposed:
+                        #theta (rows) x items (col).
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
 
@@ -442,31 +461,29 @@ getmode <- function(v) {
 }
 
 #data type agnostic
-PlotClusterRank <- function(ClusterRank,xlab="Ranking Scale", maintitle="Clustered Rankings") {
+PlotClusterRank <- function(ClusterRank,xlab="Ranking Measure", maintitle="Clustered Rankings") {
   # Creates a plot for a ClusterRank object
   #
   # Args:
   #   ClusterRank: a ClusterRank object, the output of ClusterRankBin, ClusterRankPois, ClusterRankNorm
   #   xlab: label for x axis
-  #   maintitle: title for plot
+  #   maintitle: title for plot #TODO
   #
   # Returns:
   #     a visualization using the result of ClusterRankBin, ClusterRankPois or ClusterRankNorm.
   #     Shows ranks with clusters and confidence intervals of ranks.
   #
-  require(ggplot2) #TODO is this the best way to solve this problem?
-  post_df <- reshape2::melt(ClusterRank$posterior)
 
-  #post_df$cluster <- ClusterRank$ranked_table$cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
-  #post_df$p_cluster <- ClusterRank$ranked_table$p_cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
+  post_df <- reshape2::melt(ClusterRank$posterior, as.is=TRUE)
+  #name is an ordered factor, so the compare here isnt working
+  post_df$cluster <- ClusterRank$ranked_table$cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
+  post_df$p_cluster <- ClusterRank$ranked_table$p_cluster[match(post_df$Var1,ClusterRank$ranked_table$name)]
 
+  #remove ggplot2:: here becuse we added ggplot2 to DESCRIPTION
   return(ggplot2::ggplot(ClusterRank$ranked_table,aes(y=name,x=est,color=cluster,alpha=p_cluster))+
     ggplot2::geom_point(pch=3)+
     ggplot2::geom_point(aes(x=posteriorMean),pch=4)+
-      #TODO value isn't being plotted correctly here. Why? The melted df looks okay
-    ggplot2::geom_point(data=post_df, aes(y=Var1, x=Var2, color = as.factor(Var2),
-                                          alpha = value, size = value))+
-    #ggplot2::geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=cluster, size=value,alpha=value))+
+    ggplot2::geom_point(data=post_df,aes(y=Var1,x=as.numeric(Var2),color=cluster, size=value,alpha=value))+
     ggplot2::geom_errorbarh(aes(xmin=p_LCL,xmax=p_UCL),height=0)+
     ggplot2::scale_y_discrete("",limits=rev(levels(ClusterRank$ranked_table$name)))+
     ggplot2::scale_x_continuous(xlab,breaks=ClusterRank$theta[!duplicated(round(ClusterRank$theta,2))],
@@ -478,9 +495,6 @@ PlotClusterRank <- function(ClusterRank,xlab="Ranking Scale", maintitle="Cluster
     ggplot2::guides(color=FALSE,size=FALSE,alpha=FALSE))
 }
 
-#change this to analog to Wilson CI:  https://www.ine.pt/revstat/pdf/rs120203.pdf
-#(uses phat in denom) y/t = lambda hat
-#var(lambda hat) = lT/T^2 = lambda/T. See binconf code for solving
 WilsonHilfertyPoiCI <- function (x, ti, conf.level=0.95) {
   # Calculates approximate Poisson CI by Wilson & Hilferty (1931)
   #

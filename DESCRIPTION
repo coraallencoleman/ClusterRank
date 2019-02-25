@@ -12,6 +12,7 @@ Encoding: UTF-8
 LazyData: true
 Depends: R (>= 3.1.0)
 Imports:
+    ggplot2,
     clue,
     Hmisc,
     reshape2,
