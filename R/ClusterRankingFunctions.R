@@ -6,8 +6,11 @@ library(clue)
 library(Hmisc)
 library(RColorBrewer)
 
-ClusterRankBin <- function(y,n,k=NULL,
-                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
+setClass("ClusterRank", slots=list(ranked.table="character", data.type = "string", posterior="matrix",
+                                   cluster.thetas = "vector", pr.theta = "vector"))
+
+ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL,
+                           sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
   #
   # Args:
@@ -20,9 +23,11 @@ ClusterRankBin <- function(y,n,k=NULL,
   #   n.samp: number of samples from posterior distribution
   #   row.names: optional row names argument
   #   sig.digits: optional significant digits argument
+  #   return.post: optional boolean for returning posterior
   #
   # Returns:
-  #     list including ranked_table, posterior, cluster theta, pr_theta
+  #     list including ranked.table, posterior, cluster theta, pr.theta
+  #     if return.post = TRUE, list also contains smp,smp.ord, post_dist.theta
   #
   N <- length(y)
   if(missing(n)){
@@ -30,12 +35,10 @@ ClusterRankBin <- function(y,n,k=NULL,
   }
   if (is.null(row.names)){
     row.names <- as.character(seq(1:N))
+  } else{
+    row.names <- as.character(row.names)
   }
-  # } else if (typeof(row.names) != character){ #TODO fix this
-  #   row.names <- as.character(row.names)
-  # }
  # return(c(length(y), length(n), length(row.names)))
-  #TODO there's probably a more elegant way, right?
   if (!all.equal(length(y), length(n)) & !all.equal(length(y),length(row.names))){
     stop("y, n, and row.names must be vectors of the same length")
   }
@@ -52,8 +55,7 @@ ClusterRankBin <- function(y,n,k=NULL,
   if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
     #making it impossible to reassign a low variance estimate to wrong rank? (or is it cluster?
-  }
-  else {
+  }else {
     wgt <- rep(1,N)
   }
   #weighted square error loss rank optimization
@@ -66,20 +68,21 @@ ClusterRankBin <- function(y,n,k=NULL,
   #totalRankLoss = sum(diag(lossRank)) #todo check
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
   #this function ^ will do assignment even if there are duplicates
-  #TODO check here for ties
-#  ties_table <- apply(smp.ord, 1, table())
- # for item in ties_table{
-    #if (tiestable[item] == ties_table[item+1])
-      add to tie breaking
+
+  #TODO check here for cluster ties, add to pois, norm versions
+  tiestable <- apply(smp.ord, 1, function(x) table(x))
+  for (i in 1:length(tiestable)){
+    if (tiestable[i] == tiestable[i+1]){
+      #add to tie breaking
+    }
   }
-  #better to compare columns in smp.ord If you find duplicate columns
-  which(duplicated(x, MARGIN = 2)) #if 3 is result, we know 2 and 3 are duplicates.
-  #Always, the one to the left is the first of these
-  #if (ties_tables has duplicate items){ #you can just check adjacent ones because its ordered
-    #apply tie breaker for these rows
-  #}
-  # square error loss cluster optimization
-  lossCluster <- matrix(NA,N,length(npmle_res$theta))
+  #better to compare columns in smp.ord if you find duplicate columns
+    #which(duplicated(x, MARGIN = 2)) #if 3 is result, we know 2 and 3 are duplicates. Alwaysthe one to the left is the first of these
+  # if (ties_tables has duplicate items){ #you can just check adjacent ones because its ordered
+  #   #apply tie breaker for these rows
+  # }
+
+  lossCluster <- matrix(NA,N,length(npmle_res$theta)) # square error loss cluster optimization
   for (i in 1:N) {
     for (j in 1:length(npmle_res$theta)) {
       lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
@@ -110,6 +113,7 @@ ClusterRankBin <- function(y,n,k=NULL,
   } else{
     return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
   }
+  #new()
 }
 
 ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
@@ -131,10 +135,11 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #
   N <- length(y)
   if (is.null(row.names)){
-    row.names = paste(seq(1:N))
+    row.names <- as.character(seq(1:N))
+  } else{
+    row.names <- as.character(row.names)
   }
-  #TODO there's probably a more elegant way, right?
-  if (!all.equal(length(y), length(ti)) & !all.equal(length(y),length(row.names))){
+  if (!all.equal(length(y), length(ti)) & !all.equal(length(y),length(row.names))){ #TODO there's probably a more elegant way
     stop("y, ti, and row.names must be vectors of the same length")
   }
   npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
@@ -157,7 +162,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
       lossRank[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
- #totalRankLoss = sum(diag(lossRank)) #todo check
+ #totalRankLoss = sum(diag(lossRank)) #todo check this calculation
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
     # square error loss cluster optimization
   lossCluster <- matrix(NA,N,length(npmle_res$theta))
@@ -218,9 +223,10 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
     stop("se required for normal data")
   }
   if (is.null(row.names)){
-    row.names = paste(seq(1:N))
+    row.names <- as.character(seq(1:N))
+  } else{
+    row.names <- as.character(row.names)
   }
-  #TODO there's probably a more elegant way, right?
   if (!all.equal(length(y), length(se)) & !all.equal(length(y),length(row.names))){
     stop("y, se, and row.names must be vectors of the same length")
   }
@@ -247,7 +253,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
       lossRank[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
-  #totalRankLoss = sum(diag(lossRank)) #todo check
+  totalRankLoss = sum(lossRank) #TODO check with Ron
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
   # square error loss cluster optimization
   lossCluster <- matrix(NA,N,length(npmle_res$theta))
@@ -256,7 +262,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
       lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
     }
   }
-  #totalClusterLoss <- sum(lossCluster) #TODO check
+  totalClusterLoss <- sum(lossCluster) #TODO check with Ron
   cluster <- apply(lossCluster, 1, which.min)
   cluster <- factor(cluster)
   p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
@@ -336,13 +342,15 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
     E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
   }
   #TODO apply is transposing and returning it in rows for cluster = 1
-  #make a special case when nclusters = 1
-  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
-  print(dim(E_z)) #TODO when nclusters = 1, the matrix is transposed:
-                        #theta (rows) x items (col).
+
+  if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
+    E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
+  } else {
+    E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
+  }
+  #print(dim(E_z))
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
-
   return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
 }
 
@@ -391,7 +399,11 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.di
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p_theta[i])+dpois(y,ti*theta[i],log=TRUE)
   }
-  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
+  if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
+    E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
+  } else {
+    E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
+  }
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits)
 
@@ -446,7 +458,11 @@ npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names, sig.digits) {
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p_theta[i])+dnorm(y, theta[i], se, log=TRUE)
   }
-  E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
+  if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
+    E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
+  } else {
+    E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
+  }
 
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits)
@@ -467,7 +483,7 @@ PlotClusterRank <- function(ClusterRank,xlab="Ranking Measure", maintitle="Clust
   # Args:
   #   ClusterRank: a ClusterRank object, the output of ClusterRankBin, ClusterRankPois, ClusterRankNorm
   #   xlab: label for x axis
-  #   maintitle: title for plot #TODO
+  #   maintitle: title for plot
   #
   # Returns:
   #     a visualization using the result of ClusterRankBin, ClusterRankPois or ClusterRankNorm.
