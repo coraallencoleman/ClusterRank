@@ -6,8 +6,26 @@ library(clue)
 library(Hmisc)
 library(RColorBrewer)
 
-setClass("ClusterRank", slots=list(ranked.table="character", data.type = "string", posterior="matrix",
-                                   cluster.thetas = "vector", pr.theta = "vector"))
+ClusterRank <- function(ranked.table="character", data.type = "string", posterior="matrix",
+                        cluster.thetas = "vector", pr.theta = "vector", smp="matrix",
+                        smp.ord="matrix", post.dist.theta="matrix"){
+  # Creates a ClusterRank class
+  #
+  # Args:
+  #   ranked.table
+  #   data.type
+  #   posterior="matrix",
+  #  cluster.thetas = "vector", pr.theta = "vector", smp="matrix",
+  #  smp.ord="matrix", post.dist.theta="matrix"
+  #
+  me <- list(ranked.table=ranked.table, data.type = data.type, posterior=posterior,
+             cluster.thetas = cluster.thetas, pr.theta = pr.theta,
+             smp = smp, smp.ord = smp.ord, post.dist.theta = post.dist.theta)
+  ## Set the name for the class
+  class(me) <- append(class(me),"ClusterRank")
+  return(me)
+}
+
 
 ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL,
                            sig.digits=6, return.post=FALSE) {
@@ -23,11 +41,11 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   #   n.samp: number of samples from posterior distribution
   #   row.names: optional row names argument
   #   sig.digits: optional significant digits argument
-  #   return.post: optional boolean for returning posterior
+  #   return.post: optional boolean for returning posteriors todo remove?
   #
   # Returns:
-  #     list including ranked.table, posterior, cluster theta, pr.theta
-  #     if return.post = TRUE, list also contains smp,smp.ord, post_dist.theta
+  #     ClusterRank object including ranked.table, posterior, cluster theta, pr.theta,
+  #     smp, smp.ord, post_dist.theta
   #
   N <- length(y)
   if(missing(n)){
@@ -42,16 +60,16 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   if (!all.equal(length(y), length(n)) & !all.equal(length(y),length(row.names))){
     stop("y, n, and row.names must be vectors of the same length")
   }
-  npmle_res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
-  # samples from posterior distribution. Samples from cluster thetas with prob x = post_theta
-  smp <- apply(npmle_res$post_theta,1,
+  npmle.res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
+  # samples from posterior distribution. Samples from cluster thetas with prob x = post.theta
+  smp <- apply(npmle.res$post.theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
-               theta=scale(npmle_res$theta),n.samp=n.samp)
+               theta=scale(npmle.res$theta),n.samp=n.samp)
   smp <- t(smp) #transposes
   smp.ord <- apply(smp,2,sort)
   #posterior distribution of theta
-  post_dist_theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle_res$theta),sig.digits)))
+  post.dist.theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle.res$theta),sig.digits)))
   if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
     #making it impossible to reassign a low variance estimate to wrong rank? (or is it cluster?
@@ -59,61 +77,75 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
     wgt <- rep(1,N)
   }
   #weighted square error loss rank optimization
+
+  #RANKING ASSIGNMENT
   lossRank <- matrix(NA,N,N)
   for (i in 1:N) {
     for (j in 1:N) {
       lossRank[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
-  #totalRankLoss = sum(diag(lossRank)) #todo check
+  totalRankLoss = sum(diag(lossRank)) #todo change for others
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
-  #this function ^ will do assignment even if there are duplicates
 
-  #TODO check here for cluster ties, add to pois, norm versions
-  tiestable <- apply(smp.ord, 1, function(x) table(x))
-  for (i in 1:length(tiestable)){
-    if (tiestable[i] == tiestable[i+1]){
-      #add to tie breaking
-    }
-  }
-  #better to compare columns in smp.ord if you find duplicate columns
-    #which(duplicated(x, MARGIN = 2)) #if 3 is result, we know 2 and 3 are duplicates. Alwaysthe one to the left is the first of these
-  # if (ties_tables has duplicate items){ #you can just check adjacent ones because its ordered
-  #   #apply tie breaker for these rows
-  # }
-
-  lossCluster <- matrix(NA,N,length(npmle_res$theta)) # square error loss cluster optimization
-  for (i in 1:N) {
-    for (j in 1:length(npmle_res$theta)) {
-      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
-    }
-  }
-  #totalClusterLoss <- sum(lossCluster)
-  cluster <- apply(lossCluster, 1, which.min)
-  cluster <- factor(cluster)
-  p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
-  levels(cluster) <- signif(npmle_res$theta,sig.digits) #cluster labels
-
-  ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
   colnames(CI) = c("PointEst", "Lower", "Upper")
   rownames(CI) = c(rep("", times = N))
   CI <- Hmisc::binconf(y,n) #creating confidence intervals
+
+  #TODO check here for cluster ties, then add to pois, norm versions
+  #should we actually just look at post.dist.theta?
+  tab <- t(apply(smp.ord, 1, function(x, levels) table(factor(x, levels = levels)), levels = sort(unique(c(smp.ord)))))
+  which(duplicated(tab, MARGIN = 1))
+  if (anyDuplicated(smp.ord, MARGIN = 1) != 0){
+    for (tie in which(duplicated(smp.ord, MARGIN = 1))){
+      #find the range of duplicates, then rearrange based on the sort of their CI[,1] p estimates
+      print(paste("Ties exist in cluster assignment between ", tie, " and ", tie-1))
+      #tie breaker using posterior means rnk must respect posterior means
+      if ((CI[tie,1] > CI[tie-1,1]) && (rnk[tie] < rnk[tie-1])){ #todo does this catch all cases
+        print(paste("Switching rank assignments of ", tie, " and ", tie-1))
+        tmp <- rnk[tie]
+        rnk[tie] <- rnk[tie-1]
+        rnk[tie-1] <- tmp
+      }
+    }
+  }
+
+  #CLUSTER ASSIGNMENTS
+  lossCluster <- matrix(NA,N,length(npmle.res$theta)) # square error loss cluster optimization
+  for (i in 1:N) {
+    for (j in 1:length(npmle.res$theta)) {
+      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle.res$theta)[j]))^2)
+    }
+  }
+  totalClusterLoss <- sum(lossCluster)
+  cluster <- apply(lossCluster, 1, which.min)
+  cluster <- factor(cluster)
+  p_cluster <- npmle.res$post.theta[cbind(1:N,as.numeric(cluster))]
+  levels(cluster) <- signif(npmle.res$theta,sig.digits) #cluster labels
+
+  #DATA TABLE
+  ord <- order(rnk)
   ranked_table <- data.frame(name=row.names,rank=rnk,cluster=factor(cluster),
                              y=y,n=n,est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
-                             posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
+                             posteriorMean=c(npmle.res$post.theta%*%npmle.res$theta),
                              p_cluster=p_cluster)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
-  posterior <- npmle_res$post_theta[ord,]
+  posterior <- npmle.res$post.theta[ord,]
 
-  if (return.post) {
-    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta, smp=smp,smp.ord=smp.ord, post_dist_theta=post_dist_theta))
-  } else{
-    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
-  }
-  #new()
+  # if (return.post) {
+  #   print(list(ranked_table=ranked_table,posterior=posterior,cluster.thetas=npmle.res$theta,pr.theta=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta))
+  # } else{
+  #   print(list(ranked_table=ranked_table,posterior=posterior,cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta))
+  # }
+  #TODO check this
+  obj <- ClusterRank(ranked.table=ranked_table, data.type = "Binomial", posterior=posterior,
+                     cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta,
+                     smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta)
+  #todo take posteriors out of main object. Have a method that takes the object and generates the posteriors
+  return(obj)
 }
 
 ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
@@ -131,7 +163,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including ranked_table, posterior, cluster thetas, pr_theta
+  #     list including ranked_table, posterior, cluster thetas, pr.theta
   #
   N <- length(y)
   if (is.null(row.names)){
@@ -142,11 +174,11 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   if (!all.equal(length(y), length(ti)) & !all.equal(length(y),length(row.names))){ #TODO there's probably a more elegant way
     stop("y, ti, and row.names must be vectors of the same length")
   }
-  npmle_res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
-  smp <- apply(npmle_res$post_theta,1, #samples from a centered version of npmle_res$theta with pr = post_theta
+  npmle.res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
+  smp <- apply(npmle.res$post.theta,1, #samples from a centered version of npmle.res$theta with pr = post.theta
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
-               theta=scale(npmle_res$theta),n.samp=n.samp)
+               theta=scale(npmle.res$theta),n.samp=n.samp)
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort)
   if (weighted) { #inverse variance weighting
@@ -165,17 +197,17 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
  #totalRankLoss = sum(diag(lossRank)) #todo check this calculation
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
     # square error loss cluster optimization
-  lossCluster <- matrix(NA,N,length(npmle_res$theta))
+  lossCluster <- matrix(NA,N,length(npmle.res$theta))
   for (i in 1:N) {
-    for (j in 1:length(npmle_res$theta)) {
-      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
+    for (j in 1:length(npmle.res$theta)) {
+      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle.res$theta)[j]))^2)
     }
   }
   #totalClusterLoss <- sum(lossCluster)
   cluster <- apply(lossCluster, 1, which.min)
   cluster <- factor(cluster)
-  p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
-  levels(cluster) <- signif(npmle_res$theta,sig.digits) #labels
+  p_cluster <- npmle.res$post.theta[cbind(1:N,as.numeric(cluster))]
+  levels(cluster) <- signif(npmle.res$theta,sig.digits) #labels
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
@@ -188,17 +220,21 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   ranked_table <- data.frame(name=row.names,rank=rnk,cluster=factor(cluster),
                              y=y,ti=ti,est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
-                             posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
+                             posteriorMean=c(npmle.res$post.theta%*%npmle.res$theta),
                              p_cluster=p_cluster)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
-  posterior <- npmle_res$post_theta[ord,]
+  posterior <- npmle.res$post.theta[ord,]
 
-  if (return.post) {
-    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta, smp=smp,smp.ord=smp.ord, ord=ord))
-  } else{
-    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
-  }
+  # if (return.post) {
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta,pr.theta=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, ord=ord))
+  # } else{
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta, pr.theta=npmle.res$p.theta))
+  # }
+  obj <- ClusterRank(ranked.table=ranked_table, data.type = "Poisson", posterior=posterior,
+                     cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta,
+                     smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta)
+  return(obj)
 }
 
 ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
@@ -216,7 +252,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including ranked_table, posterior, theta, pr_theta
+  #     list including ranked_table, posterior, theta, pr.theta
   #
   N <- length(y)
   if(c(missing(se))) {
@@ -230,16 +266,16 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   if (!all.equal(length(y), length(se)) & !all.equal(length(y),length(row.names))){
     stop("y, se, and row.names must be vectors of the same length")
   }
-  npmle_res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
-  # samples from posterior distribution. Samples from cluster thetas with prob x = post_theta
-  smp <- apply(npmle_res$post_theta,1,
+  npmle.res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
+  # samples from posterior distribution. Samples from cluster thetas with prob x = post.theta
+  smp <- apply(npmle.res$post.theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
-               theta=scale(npmle_res$theta),n.samp=n.samp)
+               theta=scale(npmle.res$theta),n.samp=n.samp)
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort) #
   #posterior distribution of theta
-  post_dist_theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle_res$theta),sig.digits)))
+  post.dist.theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle.res$theta),sig.digits)))
   if (weighted) { #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
                             #making it impossible to reassign a low variance estimate to wrong cluster
@@ -256,17 +292,17 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   totalRankLoss = sum(lossRank) #TODO check with Ron
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
   # square error loss cluster optimization
-  lossCluster <- matrix(NA,N,length(npmle_res$theta))
+  lossCluster <- matrix(NA,N,length(npmle.res$theta))
   for (i in 1:N) {
-    for (j in 1:length(npmle_res$theta)) {
-      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle_res$theta)[j]))^2)
+    for (j in 1:length(npmle.res$theta)) {
+      lossCluster[i,j] <- mean((smp[i,]-c(scale(npmle.res$theta)[j]))^2)
     }
   }
   totalClusterLoss <- sum(lossCluster) #TODO check with Ron
   cluster <- apply(lossCluster, 1, which.min)
   cluster <- factor(cluster)
-  p_cluster <- npmle_res$post_theta[cbind(1:N,as.numeric(cluster))]
-  levels(cluster) <- signif(npmle_res$theta,sig.digits) #labels for clusters
+  p_cluster <- npmle.res$post.theta[cbind(1:N,as.numeric(cluster))]
+  levels(cluster) <- signif(npmle.res$theta,sig.digits) #labels for clusters
 
   ord <- order(rnk)
   CI <- matrix(ncol = 3, nrow = N)
@@ -278,16 +314,20 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   ranked_table <- data.frame(name=row.names,rank=rnk,cluster=factor(cluster),
                              y=y, se = se, est = CI[,1],
                              p_LCL=CI[,2],p_UCL=CI[,3],
-                             posteriorMean=c(npmle_res$post_theta%*%npmle_res$theta),
+                             posteriorMean=c(npmle.res$post.theta%*%npmle.res$theta),
                              p_cluster=p_cluster)
   ranked_table <- ranked_table[ord,]
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
-  posterior <- npmle_res$post_theta[ord,]
-  if (return.post) {
-    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta,pr_theta=npmle_res$p_theta, smp=smp,smp.ord=smp.ord, post_dist_theta=post_dist_theta))
-  } else{
-    return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle_res$theta, pr_theta=npmle_res$p_theta))
-  }
+  posterior <- npmle.res$post.theta[ord,]
+  # if (return.post) {
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta,pr.theta=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta))
+  # } else{
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta, pr.theta=npmle.res$p.theta))
+  # }
+  obj <- ClusterRank(ranked.table=ranked_table, data.type = "Normal", posterior=posterior,
+                     cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta,
+                     smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta)
+  return(obj)
 }
 
 #NOTE: The npmle functions should only be called by the ClusterRank functions
@@ -305,41 +345,40 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including clusters thetas, prior distribution for each p_theta,
+  #     list including clusters thetas, prior distribution for each p.theta,
   #                   posterior probabilities for each item's assignment to each cluster
   #
   if (is.null(k)) {
     theta<-sort(y/n) #sorted probabilities
     k<-length(theta) #k = number of units to rank
   } else {
-    theta <- seq(min(y/n),max(y/n),length=k) #starting mass points of F. We're estimating these, along with p_theta
+    theta <- seq(min(y/n),max(y/n),length=k) #starting mass points of F. We're estimating these, along with p.theta
   }
-  p_theta <- rep(1/k,k) #probabilities of each mass point.
+  p.theta <- rep(1/k,k) #probabilities of each mass point.
 
   E_z <- matrix(NA,length(y),k) #expected value of the probability that you're in each of the k theta clusters
   #calculating the p that z_{ij} is equal to theta star j
   for (j in 1:n.iter) {
     for (i in 1:k) {
       #numerator
-      E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
+      E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE)
     }
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
-    p_theta <- apply(E_z,2,mean) #M-step: means over the matrix
+    p.theta <- apply(E_z,2,mean) #M-step: means over the matrix
     theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
   }
   #this reduces down to needed number of clusters (<=k)
   ord<-order(theta)
   theta<-c(theta[ord]) #sorts
-  p_theta<-p_theta[ord] #sorts
+  p.theta<-p.theta[ord] #sorts
 
-  p_theta <- tapply(p_theta,cumsum(!duplicated(round(theta,sig.digits))),sum) #cumsum numbers clusters is ascending order. sums the pthetas that goes with each cluster. See pictures
+  p.theta <- tapply(p.theta,cumsum(!duplicated(round(theta,sig.digits))),sum) #cumsum numbers clusters is ascending order. sums the pthetas that goes with each cluster. See pictures
   theta <- theta[!duplicated(round(theta,sig.digits))] #removes duplicate thetas
 
-  print(length(theta))
   E_z <- matrix(NA,length(y),length(theta))
   #final posterior probabilties for each county. Pr(county in cluster i)
   for (i in 1:length(theta)) {
-    E_z[,i] <- log(p_theta[i])+dbinom(y,n,theta[i],log=TRUE)
+    E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE)
   }
   #TODO apply is transposing and returning it in rows for cluster = 1
 
@@ -351,7 +390,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
   #print(dim(E_z))
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
-  return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
+  return(list(theta=theta, p.theta=p.theta, post.theta=E_z))
 }
 
 npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.digits) {
@@ -367,7 +406,7 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.di
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including prior for theta, prior distribution for each p_theta,
+  #     list including prior for theta, prior distribution for each p.theta,
   #                   posterior probabilities for each item's assignment to each cluster
   #
   if (is.null(k)) {
@@ -376,28 +415,28 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.di
   } else {
     theta <- seq(min(y/ti),max(y/ti),length=k)
   }
-  p_theta <- rep(1/k,k) #evenly spaced probabilities between 0 and 1 for clusters
+  p.theta <- rep(1/k,k) #evenly spaced probabilities between 0 and 1 for clusters
 
   E_z <- matrix(NA,length(y),k)
   for (j in 1:n.iter) {
     for (i in 1:k) {
-      E_z[,i] <- log(p_theta[i])+dpois(y, ti*theta[i],log=TRUE) #E-step
+      E_z[,i] <- log(p.theta[i])+dpois(y, ti*theta[i],log=TRUE) #E-step
     }
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #E_z will be
-    p_theta <- apply(E_z,2,mean) #M-step
+    p.theta <- apply(E_z,2,mean) #M-step
     theta <- y%*%E_z/ti%*%E_z
   }
 
   ord<-order(theta)
   theta<-c(theta[ord])
-  p_theta<-p_theta[ord]
+  p.theta<-p.theta[ord]
 
-  p_theta <- tapply(p_theta,cumsum(!duplicated(round(theta,sig.digits))),sum)
+  p.theta <- tapply(p.theta,cumsum(!duplicated(round(theta,sig.digits))),sum)
   theta <- theta[!duplicated(round(theta, sig.digits))]
 
   E_z <- matrix(NA,length(y),length(theta))
   for (i in 1:length(theta)) {
-    E_z[,i] <- log(p_theta[i])+dpois(y,ti*theta[i],log=TRUE)
+    E_z[,i] <- log(p.theta[i])+dpois(y,ti*theta[i],log=TRUE)
   }
   if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
     E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
@@ -407,11 +446,11 @@ npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.di
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits)
 
-  return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
+  return(list(theta=theta, p.theta=p.theta, post.theta=E_z))
 }
 
 #key point with normal version:
-#comes in as y, se, unknown theta, p_theta. We assume se is known here.
+#comes in as y, se, unknown theta, p.theta. We assume se is known here.
 #theta i hat = see pics
 npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names, sig.digits) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
@@ -426,7 +465,7 @@ npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names, sig.digits) {
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including prior for theta, prior distribution for each p_theta,
+  #     list including prior for theta, prior distribution for each p.theta,
   #                   posterior probabilities for each item's assignment to each cluster
   #
   if (is.null(k)) {
@@ -435,28 +474,28 @@ npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names, sig.digits) {
   } else {
     theta <- seq(min(y),max(y),length=k)
   }
-  p_theta <- rep(1/k, k)
+  p.theta <- rep(1/k, k)
 
   E_z <- matrix(NA,length(y),k)
   for (j in 1:n.iter) {
     for (i in 1:k) {
-      E_z[,i] <- log(p_theta[i])+dnorm(y, theta[i], se, log=TRUE) #uses the se that comes in with data
+      E_z[,i] <- log(p.theta[i])+dnorm(y, theta[i], se, log=TRUE) #uses the se that comes in with data
     }
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))))
-    p_theta <- apply(E_z,2,mean)
+    p.theta <- apply(E_z,2,mean)
     theta <- ((y/se^2)%*%E_z)/((1/se^2)%*%E_z)
   }
 
   ord<-order(theta)
   theta<-c(theta[ord])
-  p_theta<-p_theta[ord]
+  p.theta<-p.theta[ord]
 
-  p_theta <- tapply(p_theta,cumsum(!duplicated(round(theta,sig.digits))),sum)
+  p.theta <- tapply(p.theta,cumsum(!duplicated(round(theta,sig.digits))),sum)
   theta <- theta[!duplicated(round(theta,sig.digits))]
 
   E_z <- matrix(NA,length(y),length(theta))
   for (i in 1:length(theta)) {
-    E_z[,i] <- log(p_theta[i])+dnorm(y, theta[i], se, log=TRUE)
+    E_z[,i] <- log(p.theta[i])+dnorm(y, theta[i], se, log=TRUE)
   }
   if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
     E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
@@ -467,7 +506,7 @@ npmleNorm <- function(y, se, k=NULL,n.iter=1000,row.names, sig.digits) {
   rownames(E_z)<-row.names
   colnames(E_z)<-signif(theta,sig.digits)
 
-  return(list(theta=theta, p_theta=p_theta, post_theta=E_z))
+  return(list(theta=theta, p.theta=p.theta, post.theta=E_z))
 }
 
 getmode <- function(v) {
@@ -477,11 +516,13 @@ getmode <- function(v) {
 }
 
 #data type agnostic
+#TODO make this take a ClusterRank class object only
 PlotClusterRank <- function(ClusterRank,xlab="Ranking Measure", maintitle="Clustered Rankings") {
-  # Creates a plot for a ClusterRank object
+  # Creates a plot for a ClusterRank class object
   #
   # Args:
-  #   ClusterRank: a ClusterRank object, the output of ClusterRankBin, ClusterRankPois, ClusterRankNorm
+  #   ClusterRank: a ClusterRank class object,
+  #     the output of ClusterRankBin, ClusterRankPois, ClusterRankNorm
   #   xlab: label for x axis
   #   maintitle: title for plot
   #
