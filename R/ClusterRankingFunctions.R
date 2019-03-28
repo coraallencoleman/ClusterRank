@@ -7,7 +7,7 @@ library(Hmisc)
 library(RColorBrewer)
 
 ClusterRank <- function(ranked.table="character", data.type = "string", posterior="matrix",
-                        cluster.thetas = "vector", pr.theta = "vector", smp="matrix",
+                        cluster.thetas = "vector", thetas = "vector", smp="matrix",
                         smp.ord="matrix", post.dist.theta="matrix"){
   # Creates a ClusterRank class
   #
@@ -15,11 +15,11 @@ ClusterRank <- function(ranked.table="character", data.type = "string", posterio
   #   ranked.table
   #   data.type
   #   posterior="matrix",
-  #  cluster.thetas = "vector", pr.theta = "vector", smp="matrix",
+  #  cluster.thetas = "vector", thetas = "vector", smp="matrix",
   #  smp.ord="matrix", post.dist.theta="matrix"
   #
   me <- list(ranked.table=ranked.table, data.type = data.type, posterior=posterior,
-             cluster.thetas = cluster.thetas, pr.theta = pr.theta,
+             cluster.thetas = cluster.thetas, thetas = thetas,
              smp = smp, smp.ord = smp.ord, post.dist.theta = post.dist.theta)
   ## Set the name for the class
   class(me) <- append(class(me),"ClusterRank")
@@ -44,7 +44,7 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   #   return.post: optional boolean for returning posteriors todo remove?
   #
   # Returns:
-  #     ClusterRank object including ranked.table, posterior, cluster theta, pr.theta,
+  #     ClusterRank object including ranked.table, posterior, cluster theta, thetas,
   #     smp, smp.ord, post_dist.theta
   #
   N <- length(y)
@@ -56,7 +56,7 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   } else{
     row.names <- as.character(row.names)
   }
- # return(c(length(y), length(n), length(row.names)))
+
   if (!all.equal(length(y), length(n)) & !all.equal(length(y),length(row.names))){
     stop("y, n, and row.names must be vectors of the same length")
   }
@@ -143,13 +143,13 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   posterior <- npmle.res$post.theta[ord,]
 
   # if (return.post) {
-  #   print(list(ranked_table=ranked_table,posterior=posterior,cluster.thetas=npmle.res$theta,pr.theta=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta))
+  #   print(list(ranked_table=ranked_table,posterior=posterior,cluster.thetas=npmle.res$theta,thetas=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta))
   # } else{
-  #   print(list(ranked_table=ranked_table,posterior=posterior,cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta))
+  #   print(list(ranked_table=ranked_table,posterior=posterior,cluster.thetas=npmle.res$theta, thetas=npmle.res$p.theta))
   # }
   #TODO check this
   obj <- ClusterRank(ranked.table=ranked_table, data.type = "Binomial", posterior=posterior,
-                     cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta,
+                     cluster.thetas=npmle.res$theta, thetas=npmle.res$p.theta,
                      smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta)
   #todo take posteriors out of main object. Have a method that takes the object and generates the posteriors
   return(obj)
@@ -161,7 +161,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #
   # Args:
   #   y: number of Poisson distributed events
-  #   ti: time vector. Length of time.
+  #   ti: time vector. Length of time. (can be person-time)
   #   k: number of starting clusters desired. Defaults to length(y)
   #   scale: scale for ranking
   #   weighted: boolean indicating if inverse variance weighted is used
@@ -170,7 +170,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including ranked_table, posterior, cluster thetas, pr.theta
+  #     list including ranked_table, posterior, cluster thetas, thetas
   #
   N <- length(y)
   if (is.null(row.names)){
@@ -192,6 +192,8 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
                theta=scale(npmle.res$theta),n.samp=n.samp)
   smp <- t(smp)
   smp.ord <- apply(smp,2,sort)
+  #posterior distribution of theta
+  post.dist.theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle.res$theta),sig.digits)))
   if (weighted) { #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
     #making it impossible to reassign a low variance estimate to wrong rank, right?
@@ -238,12 +240,12 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   posterior <- npmle.res$post.theta[ord,]
 
   # if (return.post) {
-  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta,pr.theta=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, ord=ord))
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta,thetas=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, ord=ord))
   # } else{
-  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta, pr.theta=npmle.res$p.theta))
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta, thetas=npmle.res$p.theta))
   # }
   obj <- ClusterRank(ranked.table=ranked_table, data.type = "Poisson", posterior=posterior,
-                     cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta,
+                     cluster.thetas=npmle.res$theta, thetas=npmle.res$p.theta,
                      smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta)
   return(obj)
 }
@@ -263,7 +265,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   #   row.names: optional row names argument
   #
   # Returns:
-  #     list including ranked_table, posterior, theta, pr.theta
+  #     list including ranked_table, posterior, theta, thetas
   #
   N <- length(y)
   if(c(missing(se))) {
@@ -289,7 +291,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
                  sample(theta,n.samp,replace=TRUE,prob=x),
                theta=scale(npmle.res$theta),n.samp=n.samp)
   smp <- t(smp)
-  smp.ord <- apply(smp,2,sort) #
+  smp.ord <- apply(smp,2,sort)
   #posterior distribution of theta
   post.dist.theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle.res$theta),sig.digits)))
   if (weighted) { #inverse variance weighting
@@ -336,12 +338,12 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   ranked_table$name <- factor(ranked_table$name,levels=ranked_table$name,ordered=TRUE)
   posterior <- npmle.res$post.theta[ord,]
   # if (return.post) {
-  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta,pr.theta=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta))
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta,thetas=npmle.res$p.theta, smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta))
   # } else{
-  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta, pr.theta=npmle.res$p.theta))
+  #   return(list(ranked_table=ranked_table,posterior=posterior,theta=npmle.res$theta, thetas=npmle.res$p.theta))
   # }
   obj <- ClusterRank(ranked.table=ranked_table, data.type = "Normal", posterior=posterior,
-                     cluster.thetas=npmle.res$theta, pr.theta=npmle.res$p.theta,
+                     cluster.thetas=npmle.res$theta, thetas=npmle.res$p.theta,
                      smp=smp,smp.ord=smp.ord, post.dist.theta=post.dist.theta)
   return(obj)
 }
@@ -416,13 +418,14 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
   return(list(theta=theta, p.theta=p.theta, post.theta=E_z))
 }
 
-npmlePois <- function(y,ti=rep(1,length(y)),k=NULL,n.iter=1000,row.names, sig.digits) {
+npmlePois <- function(y,ti,k=NULL,n.iter=1000,row.names, sig.digits) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
-  # probability each item will be assigned to each cluster.
+  # probability each item will be assigned to each lambda cluster.
   # Called by ClusterRankPois()
   #
   # Args:
   #   y: number of poisson distributed events
+  #   n: number of people
   #   ti: length of time. defaults to 1
   #   k: initial number of clusters. Defaults to length(y)
   #   n.iter: iterations used in EM algorithm

@@ -23,7 +23,7 @@ test_that("unweighted ranking on rank scale works", {
   set.seed(123)
   unweight_rank <- ClusterRankNorm(normData$mean,se = normData$se, row.names=normData$county, scale=rank, weighted=FALSE)
   expect_equal(unweight_rank$cluster.thetas, c(2.931671, 3.081624, 3.459036), tolerance = .001)
-  expect_equal(as.vector(unweight_rank$pr_thetas), c(0.1454716, 0.4793399, 0.3751885), tolerance = .001)
+  expect_equal(as.vector(unweight_rank$thetas), c(0.1454716, 0.4793399, 0.3751885), tolerance = .001)
   expect_equal(as.vector(unweight_rank$ranked.table$name), c("Middlesex", "Tolland", "Litchfield", "New London", "Fairfield",
                                                 "Hartford", "New Haven", "Windham"))
 })
@@ -31,7 +31,7 @@ test_that("unweighted ranking on rank scale works", {
 test_that("weighted ranking on rank scale works", {
   set.seed(123)
   weight_rank <- ClusterRankNorm(normData$mean,se = normData$se, row.names=normData$county, scale=rank, weighted=TRUE)
-    expect_equal(weight_rank$ranked.table, c(2.931671, 3.081624, 3.459036), tolerance = .001)
+    expect_equal(weight_rank$cluster.thetas, c(2.931671, 3.081624, 3.459036), tolerance = .001)
     expect_equal(as.vector(weight_rank$ranked.table$name), c("Middlesex", "Tolland", "Litchfield", "New London",
                                                   "Fairfield", "Hartford", "New Haven", "Windham"))
 })
@@ -39,7 +39,7 @@ test_that("weighted ranking on rank scale works", {
 test_that("null row.names weighted ranking on rank scale works", {
   set.seed(123)
   weight_rank <- ClusterRankNorm(normData$mean,se = normData$se, scale=rank, weighted=TRUE)
-  expect_equal(weight_rank$ranked.table, c(2.931671, 3.081624, 3.459036), tolerance = .001)
+  expect_equal(weight_rank$cluster.thetas, c(2.931671, 3.081624, 3.459036), tolerance = .001)
   expect_equal(as.vector(weight_rank$ranked.table$name), paste(c(4, 7, 3, 6, 1, 2, 5, 8)))
 })
 
@@ -47,7 +47,7 @@ test_that("null row.names weighted ranking on rank scale works", {
 test_that("Errors with message if the NPMLE is point mass at a single value", { #GitHub issue #8
   y<-rep(10,20)
   se<-rep(50,20)
-  expect_error(ClusterRankBin(y,se,row.names=paste("County",1:20),sig.digits=2), regexp = "^All units have identical point mass at")
+  expect_error(ClusterRankNorm(y,se,row.names=paste("County",1:20),sig.digits=2), regexp = "^All units have identical point mass at")
   })
 
 test_that("handles two-way tie case", { #GitHub issue #9

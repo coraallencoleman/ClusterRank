@@ -43,10 +43,11 @@ test_that("Errors with message if the NPMLE is point mass at a single value", { 
   expect_error(ClusterRankBin(y,n,row.names=paste("County",1:20),sig.digits=2), regexp = "^All units have identical point mass at")
 })
 
+#TODO isnt caught as tie
 test_that("handles two-way tie case", { #GitHub issue #9
   y <- c(8, 12, 13, 8)
   n <- rep(100,4)
-  tie2<-ClusterRankBin(y,n,row.names=paste("County",1:4),sig.digits=2)
+  expect_error(ClusterRankBin(y,n,row.names=paste("County",1:4),sig.digits=2), regexp = "^Ties exist in cluster assignment")
 })
 
 test_that("handles multi-way tie case", { #GitHub issue #9
