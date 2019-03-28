@@ -60,8 +60,13 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   if (!all.equal(length(y), length(n)) & !all.equal(length(y),length(row.names))){
     stop("y, n, and row.names must be vectors of the same length")
   }
+  if (length(unique(y/n)) == 1){
+    stop("All units have identical point mass at ", unique(y/n), " so these units cannot be clustered and ranked.")
+  }
+
   npmle.res <- npmleBin(y=y,n=n,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
   # samples from posterior distribution. Samples from cluster thetas with prob x = post.theta
+
   smp <- apply(npmle.res$post.theta,1,
                function(x,theta,n.samp)
                  sample(theta,n.samp,replace=TRUE,prob=x),
@@ -97,10 +102,12 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   #should we actually just look at post.dist.theta?
   tab <- t(apply(smp.ord, 1, function(x, levels) table(factor(x, levels = levels)), levels = sort(unique(c(smp.ord)))))
   which(duplicated(tab, MARGIN = 1))
-  if (anyDuplicated(smp.ord, MARGIN = 1) != 0){
-    for (tie in which(duplicated(smp.ord, MARGIN = 1))){
+  if (anyDuplicated(tab, MARGIN = 1) != 0){
+    for (tie in which(duplicated(tab, MARGIN = 1))){
+      #we need to check if any of the ties are next to each other
+      #(it should give two duplicate if there are more than one)
       #find the range of duplicates, then rearrange based on the sort of their CI[,1] p estimates
-      print(paste("Ties exist in cluster assignment between ", tie, " and ", tie-1))
+      stop("Ties exist in cluster assignment between ", tie, " and ", tie-1)
       #tie breaker using posterior means rnk must respect posterior means
       if ((CI[tie,1] > CI[tie-1,1]) && (rnk[tie] < rnk[tie-1])){ #todo does this catch all cases
         print(paste("Switching rank assignments of ", tie, " and ", tie-1))
@@ -174,6 +181,10 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
   if (!all.equal(length(y), length(ti)) & !all.equal(length(y),length(row.names))){ #TODO there's probably a more elegant way
     stop("y, ti, and row.names must be vectors of the same length")
   }
+  if (length(unique(y)) == 1){
+    stop("All units have identical point mass at y = ", unique(y), " so these units cannot be clustered and ranked.")
+  }
+
   npmle.res <- npmlePois(y=y,ti=ti,k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
   smp <- apply(npmle.res$post.theta,1, #samples from a centered version of npmle.res$theta with pr = post.theta
                function(x,theta,n.samp)
@@ -266,6 +277,11 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   if (!all.equal(length(y), length(se)) & !all.equal(length(y),length(row.names))){
     stop("y, se, and row.names must be vectors of the same length")
   }
+
+  if (length(unique(y/se)) == 1){
+    stop("All units have identical point mass at ", unique(y/se), " so these units cannot be clustered and ranked.")
+  }
+
   npmle.res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
   # samples from posterior distribution. Samples from cluster thetas with prob x = post.theta
   smp <- apply(npmle.res$post.theta,1,
@@ -332,7 +348,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
 
 #NOTE: The npmle functions should only be called by the ClusterRank functions
 
-npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
+npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
   # Estimates clusters nonparametrically using an EM algorithm. Calculates the
   # probability each item will be assigned to each cluster.
   # Called by ClusterRankBin()
@@ -356,17 +372,24 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
   }
   p.theta <- rep(1/k,k) #probabilities of each mass point.
 
-  E_z <- matrix(NA,length(y),k) #expected value of the probability that you're in each of the k theta clusters
-  #calculating the p that z_{ij} is equal to theta star j
-  for (j in 1:n.iter) {
-    for (i in 1:k) {
-      #numerator
-      E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE)
+  if (length(unique(theta)) > 1){ #checks that thetas have > 1 point mass. If they are, skips EM step and proceeds
+    E_z <- matrix(NA,length(y),k) #expected value of the probability that a county is in each of the k theta clusters
+    #calculating the p that z_{ij} is equal to theta star j
+    for (j in 1:n.iter) {
+      for (i in 1:k) {
+        #numerator
+        E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE)
+      }
+      E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
+      p.theta <- apply(E_z,2,mean) #M-step: means over the matrix
+      theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
     }
-    E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
-    p.theta <- apply(E_z,2,mean) #M-step: means over the matrix
-    theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
+  } #end of length(y) > 1 cases
+
+  if (length(unique(theta)) == 1){ #special case when nclusters = 1
+    E_z <- rep(1, times = length(y))
   }
+
   #this reduces down to needed number of clusters (<=k)
   ord<-order(theta)
   theta<-c(theta[ord]) #sorts
@@ -380,16 +403,16 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names, sig.digits) {
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE)
   }
-  #TODO apply is transposing and returning it in rows for cluster = 1
 
-  if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
-    E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
+  #Creates post.theta data frame
+  if (length(unique(theta)) == 1){ #special case when nclusters = 1
+    E_z <- as.data.frame(exp(E_z-max(E_z))/sum(exp(E_z-max(E_z)))) #normalizes probabilities to avoid underflow
   } else {
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
   }
-  #print(dim(E_z))
-  rownames(E_z)<-row.names
+  rownames(E_z) <- row.names
   colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
+
   return(list(theta=theta, p.theta=p.theta, post.theta=E_z))
 }
 

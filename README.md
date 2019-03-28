@@ -71,6 +71,6 @@ requires: means, standard deviations
 optional: row names for items
 
 ## Testing
-To test using test_that package, run: 
+To test using testthat package, open ClusterRank project and run: 
 devtools::test()
 
