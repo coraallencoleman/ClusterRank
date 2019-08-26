@@ -27,8 +27,9 @@ ClusterRank <- function(ranked.table="character", data.type = "string", posterio
 }
 
 
-ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL,
+ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=FALSE,n.iter=1000,n.samp=10000,row.names=NULL,
                            sig.digits=6, return.post=FALSE) {
+  #TODO ask which kind of tie breaking we'd like, similarly to rank() function
   # Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
   #
   # Args:
@@ -103,11 +104,17 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
   tab <- t(apply(smp.ord, 1, function(x, levels) table(factor(x, levels = levels)), levels = sort(unique(c(smp.ord)))))
   which(duplicated(tab, MARGIN = 1))
   if (anyDuplicated(tab, MARGIN = 1) != 0){
+  #TODO flag this, give warning
+    warning("Rankings ", duplicated(tab, MARGIN = 1), "are tied so these assignments are arbitrary.")
     for (tie in which(duplicated(tab, MARGIN = 1))){
+      #12, 13, 14 replcae with 12, 12, 12 or with min, max, mean, random
+      #the ord <- order(rnk, row.names)
+
+
       #we need to check if any of the ties are next to each other
       #(it should give two duplicate if there are more than one)
       #find the range of duplicates, then rearrange based on the sort of their CI[,1] p estimates
-      stop("Ties exist in cluster assignment between ", tie, " and ", tie-1)
+      stop("Ties exist in cluster assignment between ", tie, " and ", tie-1) #TODO
       #tie breaker using posterior means rnk must respect posterior means
       if ((CI[tie,1] > CI[tie-1,1]) && (rnk[tie] < rnk[tie-1])){ #todo does this catch all cases
         print(paste("Switching rank assignments of ", tie, " and ", tie-1))
@@ -156,7 +163,7 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=TRUE,n.iter=1000,
 }
 
 ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
-                        scale=identity,weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
+                        scale=identity,weighted=FALSE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Poisson data. Calls npmlePois()
   #
   # Args:
@@ -251,7 +258,7 @@ ClusterRankPois <- function(y,ti=rep(1,length(y)),k=NULL,
 }
 
 ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
-                            weighted=TRUE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
+                            weighted=FALSE,n.iter=1000,n.samp=10000,row.names=NULL, sig.digits=6, return.post=FALSE) {
   # Assigns ranks then clusters to each item in a list based on Normal data. Calls npmleNorm()
   #
   # Args:
@@ -281,7 +288,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
   }
 
   if (length(unique(y/se)) == 1){
-    stop("All units have identical point mass at ", unique(y/se), " so these units cannot be clustered and ranked.")
+    stop("All units have identical point mass at ", unique(y/se), " so these units are all in the same cluster and cannot be sensibly ranked.")
   }
 
   npmle.res <- npmleNorm(y=y, se=se, k=k,n.iter=n.iter,row.names=row.names, sig.digits=sig.digits)
@@ -307,7 +314,7 @@ ClusterRankNorm <- function(y, se, k=NULL, scale=identity,
       lossRank[i,j] <- wgt[i] * mean((smp[i,]-smp.ord[j,])^2)
     }
   }
-  totalRankLoss = sum(lossRank) #TODO check with Ron
+  totalRankLoss = sum(diag(lossRank)) #TODO should be diag everywhere
   rnk <- as.numeric(clue::solve_LSAP(lossRank))
   # square error loss cluster optimization
   lossCluster <- matrix(NA,N,length(npmle.res$theta))
@@ -385,6 +392,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
       E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
       p.theta <- apply(E_z,2,mean) #M-step: means over the matrix
       theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
+      #^Ron says this shouldnt create problems for a single point mass
     }
   } #end of length(y) > 1 cases
 
@@ -413,6 +421,7 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow
   }
   rownames(E_z) <- row.names
+  #TODO drop first element of vector
   colnames(E_z)<-signif(theta,sig.digits) #cluster names are rounded
 
   return(list(theta=theta, p.theta=p.theta, post.theta=E_z))
@@ -464,7 +473,7 @@ npmlePois <- function(y,ti,k=NULL,n.iter=1000,row.names, sig.digits) {
   for (i in 1:length(theta)) {
     E_z[,i] <- log(p.theta[i])+dpois(y,ti*theta[i],log=TRUE)
   }
-  if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col)
+  if (length(theta) == 1){ #special case when nclusters = 1 when nclusters = 1, the matrix is transposed: #theta (rows) x items (col) TODO
     E_z <- apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x)))) #normalizes probabilities to avoid underflow
   } else {
     E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes probabilities to avoid underflow

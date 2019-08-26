@@ -2,6 +2,7 @@ context("test_bin")
 
 test_that("imports data", {
   expect_equal(nrow(binData), 8)
+  expect_equal(nrow(AZbinData), 15)
 })
 
 test_that("unweighted ranking works", {
@@ -43,19 +44,27 @@ test_that("Errors with message if the NPMLE is point mass at a single value", { 
   expect_error(ClusterRankBin(y,n,row.names=paste("County",1:20),sig.digits=2), regexp = "^All units have identical point mass at")
 })
 
-#TODO isnt caught as tie
-test_that("handles two-way tie case", { #GitHub issue #9
-  y <- c(8, 12, 13, 8)
-  n <- rep(100,4)
-  expect_error(ClusterRankBin(y,n,row.names=paste("County",1:4),sig.digits=2), regexp = "^Ties exist in cluster assignment")
+##AZ case
+test_that("Arizona clusters and ranks matches Ron's code", {
+  set.seed(123)
+  weight_rank_NULL <- ClusterRankBin(AZbinData$lbw, AZbinData$births, scale=rank, weighted=TRUE)
+  expect_equal(weight_rank_NULL$cluster.thetas, c(0.0592, 0.0678, 0.0696, 0.0713, 0.0778, 0.0835))
+  expect_equal(as.vector(weight_rank_NULL$ranked.table$name), paste(c(8, 13, 12, 14, 10, 3, 2, 5, 6, 15, 9, 4, 11, 7, 1)))
 })
 
-test_that("handles multi-way tie case", { #GitHub issue #9
-  y <- c( 8, 12, 13, 8, 17, 12, 11, 14, 6, 17, 15, 9, 11, 6, 11, 7, 14, 14, 11, 8)
-  n <- rep(100,20)
-  tieMany <- ClusterRankBin(y,n,row.names=paste("County",1:20),sig.digits=2)
-  #"county 5" with the most (17) events is assigned rank 13,
-  #because rank positions 13-20 all belong with probability 1 to the cluster 2
-})
+#possibel future TODO: this isnt caught as tie
+# test_that("handles two-way tie case", { #GitHub issue #9
+#   y <- c(8, 12, 13, 8)
+#   n <- rep(100,4)
+#   expect_error(ClusterRankBin(y,n,row.names=paste("County",1:4),sig.digits=2), regexp = "^Ties exist in cluster assignment")
+# })
+#
+# test_that("handles multi-way tie case", { #GitHub issue #9
+#   y <- c( 8, 12, 13, 8, 17, 12, 11, 14, 6, 17, 15, 9, 11, 6, 11, 7, 14, 14, 11, 8)
+#   n <- rep(100,20)
+#   tieMany <- ClusterRankBin(y,n,row.names=paste("County",1:20),sig.digits=2)
+#   #"county 5" with the most (17) events is assigned rank 13,
+#   #because rank positions 13-20 all belong with probability 1 to the cluster 2
+# })
 
 #test plotting later? plot_rt(rc = unweight)

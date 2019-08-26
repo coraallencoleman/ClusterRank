@@ -50,17 +50,17 @@ test_that("Errors with message if the NPMLE is point mass at a single value", { 
   expect_error(ClusterRankNorm(y,se,row.names=paste("County",1:20),sig.digits=2), regexp = "^All units have identical point mass at")
   })
 
-test_that("handles two-way tie case", { #GitHub issue #9
-  y <- c(8, 12, 13, 8)
-  se <- rep(100,4)
-})
-
-test_that("handles multi-way tie case", { #GitHub issue #9
-  y <- c( 8, 12, 13, 8, 17, 12, 11, 14, 6, 17, 15, 9, 11, 6, 11, 7, 14, 14, 11, 8)
-  se <- rep(100,20)
-
-  #"county 5" with the most (17) events is assigned rank 13,
-  #because rank positions 13-20 all belong with probability 1 to the cluster 2
-})
+# test_that("handles two-way tie case", { #GitHub issue #9
+#   y <- c(8, 12, 13, 8)
+#   se <- rep(100,4)
+# })
+#
+# test_that("handles multi-way tie case", { #GitHub issue #9
+#   y <- c( 8, 12, 13, 8, 17, 12, 11, 14, 6, 17, 15, 9, 11, 6, 11, 7, 14, 14, 11, 8)
+#   se <- rep(100,20)
+#
+#   #"county 5" with the most (17) events is assigned rank 13,
+#   #because rank positions 13-20 all belong with probability 1 to the cluster 2
+# })
 #test plotting later? plot_rt(rc = unweight)
 
