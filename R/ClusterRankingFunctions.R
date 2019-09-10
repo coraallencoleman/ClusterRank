@@ -29,7 +29,7 @@ ClusterRank <- function(ranked.table="character", data.type = "string", posterio
 
 ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=FALSE,n.iter=1000,n.samp=10000,row.names=NULL,
                            sig.digits=6, return.post=FALSE) {
-  #TODO ask which kind of tie breaking we'd like, similarly to rank() function
+  #in future, we could ask which kind of tie breaking we'd like, similarly to rank() function
   # Assigns ranks then clusters to each item in a list based on Binomial data. Calls npmleBin()
   #
   # Args:
@@ -78,7 +78,7 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=FALSE,n.iter=1000
   post.dist.theta <- t(apply(round(smp.ord,sig.digits), 1, function(x, levels) table(factor(x, levels = levels))/length(x), levels=round(scale(npmle.res$theta),sig.digits)))
   if (weighted){ #inverse variance weighting
     wgt <- 1/pmax(.Machine$double.eps,apply(smp,1,var)) #if variance is zero, uses v small value to weight,
-    #making it impossible to reassign a low variance estimate to wrong rank? (or is it cluster?
+    #making it impossible to reassign a low variance estimate to wrong rank?
   }else {
     wgt <- rep(1,N)
   }
@@ -392,10 +392,9 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
       E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
       p.theta <- apply(E_z,2,mean) #M-step: means over the matrix
       theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
-      #^Ron says this shouldnt create problems for a single point mass
+      #^this shouldnt create problems for a single point mass
     }
   } #end of length(y) > 1 cases
-
   if (length(unique(theta)) == 1){ #special case when nclusters = 1
     E_z <- rep(1, times = length(y))
   }

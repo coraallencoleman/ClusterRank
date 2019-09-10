@@ -45,11 +45,11 @@ test_that("Errors with message if the NPMLE is point mass at a single value", { 
 })
 
 ##AZ case
-test_that("Arizona clusters and ranks matches Ron's code", {
+test_that("Arizona clusters and ranks match Ron's code", {
   set.seed(123)
-  weight_rank_NULL <- ClusterRankBin(AZbinData$lbw, AZbinData$births, scale=rank, weighted=TRUE)
-  expect_equal(weight_rank_NULL$cluster.thetas, c(0.0592, 0.0678, 0.0696, 0.0713, 0.0778, 0.0835))
-  expect_equal(as.vector(weight_rank_NULL$ranked.table$name), paste(c(8, 13, 12, 14, 10, 3, 2, 5, 6, 15, 9, 4, 11, 7, 1)))
+  weight_rank_NULL <- ClusterRankBin(AZbinData$lbw, AZbinData$births, scale=rank, weighted=TRUE, row.names = AZbinData$county)
+  expect_equal(round(weight_rank_NULL$cluster.thetas, 3), c(0.059, 0.068, 0.070, 0.071, 0.078,0.084))
+  expect_equal(as.vector(weight_rank_NULL$ranked.table$name), paste(c("Yuma", "La Paz", "Greenlee", "Pinal", "Maricopa", "Mohave", "Yavapai", "Pima", "Apache", "Graham", "Santa Cruz", "Coconino", "Cochise", "Gila", "Navajo")))
 })
 
 #possibel future TODO: this isnt caught as tie
