@@ -110,7 +110,6 @@ ClusterRankBin <- function(y,n,k=NULL, scale=identity,weighted=FALSE,n.iter=1000
       #12, 13, 14 replcae with 12, 12, 12 or with min, max, mean, random
       #the ord <- order(rnk, row.names)
 
-
       #we need to check if any of the ties are next to each other
       #(it should give two duplicate if there are more than one)
       #find the range of duplicates, then rearrange based on the sort of their CI[,1] p estimates
@@ -381,18 +380,17 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
   }
   p.theta <- rep(1/k,k) #probabilities of each mass point.
 
-  if (length(unique(theta)) > 1){ #checks that thetas have > 1 point mass. If they are, skips EM step and proceeds
+  if (length(unique(theta)) > 1){ #checks that thetas have > 1 point mass. If they do, skips EM step and proceeds
     E_z <- matrix(NA,length(y),k) #expected value of the probability that a county is in each of the k theta clusters
     #calculating the p that z_{ij} is equal to theta star j
     for (j in 1:n.iter) {
       for (i in 1:k) {
         #numerator
-        E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE)
+        E_z[,i] <- log(p.theta[i])+dbinom(y,n,theta[i],log=TRUE) #E step
       }
       E_z <- t(apply(E_z,1,function(x) exp(x-max(x))/sum(exp(x-max(x))))) #normalizes (pseudo zs). This is the E part of EM alg
       p.theta <- apply(E_z,2,mean) #M-step: means over the matrix
       theta <- y%*%E_z/n%*%E_z #calculates optimal theta for each cluster
-      #^this shouldnt create problems for a single point mass
     }
   } #end of length(y) > 1 cases
   if (length(unique(theta)) == 1){ #special case when nclusters = 1
@@ -404,7 +402,8 @@ npmleBin <- function(y,n,k=NULL,n.iter=1000,row.names,sig.digits) {
   theta<-c(theta[ord]) #sorts
   p.theta<-p.theta[ord] #sorts
 
-  p.theta <- tapply(p.theta,cumsum(!duplicated(round(theta,sig.digits))),sum) #cumsum numbers clusters is ascending order. sums the pthetas that goes with each cluster. See pictures
+  p.theta <- tapply(p.theta,cumsum(!duplicated(round(theta,sig.digits))),sum)
+  #cumsum numbers clusters is ascending order. sums the pthetas that goes with each cluster. See pictures
   theta <- theta[!duplicated(round(theta,sig.digits))] #removes duplicate thetas
 
   E_z <- matrix(NA,length(y),length(theta))
